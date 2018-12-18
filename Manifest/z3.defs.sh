@@ -32,6 +32,7 @@ function pkg_fix_bin() {
     # Fix missing lib/ (point to bin)
     ln -s bin "$storedir/$pkg_name/lib"
     # Fix missing bin # TODO: do in a better way
+    mkdir -p "$THIRDPARTY/bin"
     ln -s "../store/$pkg_name/bin/z3" "$THIRDPARTY/bin/z3"
 }
 
