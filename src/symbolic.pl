@@ -10,7 +10,6 @@
    enhanced with external SMT solvers.").
 
 :- use_module(engine(attributes)).
-:- use_module(library(between)).
 
 % ---------------------------------------------------------------------------
 :- doc(section, "Flags").
@@ -28,7 +27,7 @@ get_ext_solver(N) :-
 	).
 
 % ---------------------------------------------------------------------------
-:- doc(section, "Maps with symbolic values").
+:- doc(section, "Constaints").
 
 % Dic uses "incomplete" data structures to represent maps with
 % symbolic values for keys. Keys must be concrete.
@@ -121,7 +120,7 @@ element(M,N) := Tmp :-
 % Like update/4 but do not keep track of K % TODO: optimization, needed now?
 :- export(update0/4).
 update0(Dic,K,V) := Dic2 :-
-	trace(sym(arr_eq(Dic,Dic2))),
+	trace(sym(update0(Dic,Dic2))),
 	Dic2 = ~mset(Dic,K,V).
 
 % Like element/3 but do not keep track of K % TODO: optimization, needed now?
@@ -146,12 +145,8 @@ ensure(_Ty, X, Xc) :-
 	Xc = Xc0,
 	( integer(Xc) -> true ; ensure_(int64, Xc) ).
 
-% TODO: extend?
-ensure_(int64, Xc) :-
-%	( between(0,1,Xc) ; between(-1,-1,Xc) ).
-%	( between(0,3,Xc) ; between(-4,-1,Xc) ).
-%	( between(0,15,Xc) ; between(-16,-1,Xc) ).
-	( between(0,127,Xc) ; between(-128,-1,Xc) ).
+% Pick any random value
+ensure_(int64, Xc) :- !, Xc = 0.
 
 % Y is a new symbolic variable with value V
 newsym(V) := Y :-
@@ -173,6 +168,91 @@ symtmp(X) := Y :- is_sym(X), !,
 symtmp(X) := Y :-
 	V = ~concretize(X),
 	Y = V.
+
+:- export(negcond/2).
+negcond(X=Y) := (X\=Y).
+negcond(X\=Y) := (X=Y).
+
+:- export(concretize/2).
+% Evaluate symbolic expressions, assigning a random value for any
+% unassigned symbolic variable.
+
+% TODO: extend
+concretize(X) := R :- var(X), !, ensure(int64, X, R0), R = ~to_bv(64, R0).
+concretize(N) := R :- integer(N), !, R = ~to_bv(64, N).
+concretize(X) := X :- atom(X), !. % (assume a constant)
+concretize(+X) := ~concretize(X) :- !.
+concretize(-X) := R :- !, R0 is -(~concretize(X)), R = ~to_bv(64, R0).
+concretize(X+Y) := R :- !, R0 is ~concretize(X) + ~concretize(Y), R = ~to_bv(64, R0).
+concretize(X-Y) := R :- !, R0 is ~concretize(X) - ~concretize(Y), R = ~to_bv(64, R0).
+concretize(X*Y) := R :- !, R0 is ~concretize(X) * ~concretize(Y), R = ~to_bv(64, R0).
+concretize(X<<Y) := R :- !, R0 is ~concretize(X) << ~concretize(Y), R = ~to_bv(64, R0).
+concretize(X>>Y) := R :- !, R is ~concretize(X) >> ~concretize(Y).
+concretize(ashr(X,Y)) := R :- !, % Like >> but it sets all upper bits to 1 using (-1)<<64 if needed
+	R0 is ~signext(64, ~concretize(X)) >> ~concretize(Y),
+	R = ~to_bv(64, R0).
+concretize(X/\Y) := R :- !, R is ~concretize(X) /\ ~concretize(Y).
+concretize(X\/Y) := R :- !, R is ~concretize(X) \/ ~concretize(Y).
+concretize(X#Y) := R :- !, R is ~concretize(X) # ~concretize(Y).
+concretize(X=Y) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( Xr = Yr -> R = 1 ; R = 0 ).
+concretize(X\=Y) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( Xr \= Yr -> R = 1 ; R = 0 ).
+% unsigned comparison
+concretize(uge(X,Y)) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~unsigned(64,Xr) >= ~unsigned(64,Yr) -> R = 1 ; R = 0 ).
+concretize(ug(X,Y)) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~unsigned(64,Xr) > ~unsigned(64,Yr) -> R = 1 ; R = 0 ).
+concretize(ul(X,Y)) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~unsigned(64,Xr) < ~unsigned(64,Yr) -> R = 1 ; R = 0 ).
+concretize(ule(X,Y)) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~unsigned(64,Xr) =< ~unsigned(64,Yr) -> R = 1 ; R = 0 ).
+% signed comparison
+concretize(X>=Y) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~signext(64,Xr) >= ~signext(64,Yr) -> R = 1 ; R = 0 ).
+concretize(X>Y) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~signext(64,Xr) > ~signext(64,Yr) -> R = 1 ; R = 0 ).
+concretize(X<Y) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~signext(64,Xr) < ~signext(64,Yr) -> R = 1 ; R = 0 ).
+concretize(X=<Y) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~signext(64,Xr) =< ~signext(64,Yr) -> R = 1 ; R = 0 ).
+concretize(ite(X,Then,Else)) := R :- !, Xr = ~concretize(X), ( Xr = 1 -> R = ~concretize(Then) ; R = ~concretize(Else) ).
+concretize(X) := _ :- throw(error(unknown_solver_expr(X), concretize/2)).
+
+% Use Size-bit mask
+to_bv(Size,N) := R :- R is ((1<<Size)-1)/\N.
+
+% Extend sign bit from Size-bit to unbound arithmetic
+signext(Size,N) := R :-
+	( 0 =:= N /\ (1<<(Size-1)) -> % sign bit is unset
+	    R = N
+	; SignBits is ((-1)<<Size),
+	  R is (N \/ SignBits)
+	).
+
+% Unsigned sign bit from Size-bit to unbound arithmetic
+unsigned(_,N) := N. % TODO: nothing if the default representation uses to_bv/3
+
+scanlit(element(A,B,C), Dic) --> !, decl(A,Dic,array64), scanexp(B,Dic), scanexp(C,Dic).
+scanlit(update(A,B,C,D), Dic) --> !, decl(A,Dic,array64), scanexp(B,Dic), scanexp(C,Dic), decl(D,Dic,array64).
+scanlit((A=B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanlit((A\=B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanlit(X, _Dic) --> { throw(unknown(X)) }.
+
+scanexp(A, Dic) --> { var(A) }, !, decl(A, Dic, int64).
+scanexp(+A, Dic) --> !, scanexp(A,Dic).
+scanexp(-A, Dic) --> !, scanexp(A,Dic).
+scanexp(A+B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(A-B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(A*B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(A<<B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(A>>B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(ashr(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(A/\B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(A\/B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(A#B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(A=B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(A\=B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(uge(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(ug(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(ul(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(ule(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(A>=B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(A>B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(A<B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(A=<B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
+scanexp(ite(A,B,C), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic), scanexp(C,Dic).
+scanexp(_A, _Dic) --> [].
 
 % ---------------------------------------------------------------------------
 :- doc(section, "Derivation trace (both symbolic constraints and custom items)").
@@ -236,42 +316,15 @@ trace(X) :-
 % ---------------------------------------------------------------------------
 :- doc(section, "Solver").
 
-% :- use_module(library(format)).
-% :- use_module(library(write)).
-
 :- export(get_model/1).
 get_model(Goal) :-
-	% \+ \+ ( numbervars(Goal,0,_), format("Goal: ~q~n", [Goal]) ), %K
-	%display(pa(Goal)), nl,
 	prop_array(Goal),
-	%display(pb(Goal)), nl,
-	\+ unsat(Goal),
-	( get_ext_solver(z3), has_smt -> % TODO: other solvers?
-	    smt_get_model(Goal),
-	    % TODO: (it may not be needed if we get the arrays directly from SMT)
-	    ( assign_ns(Goal) ->
-	        true
-	    ; message(error, ['Could not reconstruct model from SMT']), % (this should not happen)
-	      fail
-	    )
-	; % NOTE: without an SMT assign/1 will search values (which can be very inefficient)
-	  assign(Goal),
-	  assign_ns(Goal) % TODO: reconstruct reg arrays (ignored in assign/1)
-	).
-
-% (nosearch)
-assign_ns([]).
-assign_ns([C|Cs]) :- !,
-	( assign1(C) -> true ; true ), % TODO: may fail due to bitvec vs int!
-	assign_ns(Cs).
-
-% TODO: Ugly hack... implement real propagation or use a SMT
-unsat(Goal) :-
-	( member(C, Goal),
-	  member(D, Goal),
-	    ~nocond(C) == ~negcond(~nocond(D)) -> true
-	; member(C, Goal), C = (X \= Y), X == Y -> true
-	; fail
+	smt_get_model(Goal),
+	% TODO: (it may not be needed if we get the arrays directly from SMT)
+	( assign_arr(Goal) ->
+	    true
+	; % Note: this should not happen
+	  throw(error(could_not_reconstruct_model, get_model/1))
 	).
 
 % TODO: Very incomplete... implement real propagation or use a SMT
@@ -286,99 +339,15 @@ prop_array_([element(A,K,V)|Cs], Dic) :- atom(K), var(V), !,
 prop_array_([_|Cs], Dic) :-
 	prop_array_(Cs, Dic).
 
-:- export(negcond/2).
-negcond(X=Y) := (X\=Y).
-negcond(X\=Y) := (X=Y).
+assign_arr([]).
+assign_arr([C|Cs]) :- !,
+	( assign1(C) -> true ; true ), % TODO: may fail due to bitvec vs int!
+	assign_arr(Cs).
 
-nocond(cond(C)) := C :- !.
-nocond(C) := C.
-
-assign([]).
-assign([C|Cs]) :- !,
-	( C = element(_,K,_), atom(K) -> true % TODO: ugly (naive solver hangs here, current use do not need it)
-	; C = update(_,K,_,_), atom(K) -> true % TODO: ugly (naive solver hangs here, current use do not need it)
-	; assign1(C)
-	),
-	assign(Cs).
-
-assign1(element(M,I,V)) :- !,
-	% TODO: add I=J and I\=J branch w.r.t. previous updates
-	V0 = ~mget(M,I), ( type(V0,var) -> V=V0 ; assign1(V=V0) ).
-assign1(update(M0,I,V,M)) :- !,
-	% TODO: add I=J and I\=J branch w.r.t. future reads?
-	M = ~mset(M0,I,V).
-assign1(arr_eq(X,Y)) :- !, % same array
-	X = Y. % TODO: assume that some is free
-assign1(X=Y) :- !,
-	( type(X,var), type(Y,var) ->
-	    X = Y
-	; type(X,var) ->
-	    Yc = ~concretize(Y),
-	    X = ~newsym(Yc)
-	; type(Y,var) ->
-	    Xc = ~concretize(X),
-	    Y = ~newsym(Xc)
-	; % TODO: very slow!
-	  Xc = ~concretize(X),
-	  Yc = ~concretize(Y),
-	  Xc = Yc
-	).
-assign1(X\=Y) :- !,
-	Xc = ~concretize(X),
-	Yc = ~concretize(Y),
-	\+ Xc = Yc.
-assign1(cond(Constr)) :- !, % (for marking conditions)
-	assign1(Constr).
-
-:- export(concretize/2).
-% Evaluate symbolic expressions, assigning a random value for any
-% unassigned symbolic variable.
-
-% TODO: extend
-concretize(X) := R :- var(X), !, ensure(int64, X, R0), R = ~to_bv(64, R0).
-concretize(N) := R :- integer(N), !, R = ~to_bv(64, N).
-concretize(X) := X :- atom(X), !. % (assume a constant)
-concretize(+X) := ~concretize(X) :- !.
-concretize(-X) := R :- !, R0 is -(~concretize(X)), R = ~to_bv(64, R0).
-concretize(X+Y) := R :- !, R0 is ~concretize(X) + ~concretize(Y), R = ~to_bv(64, R0).
-concretize(X-Y) := R :- !, R0 is ~concretize(X) - ~concretize(Y), R = ~to_bv(64, R0).
-concretize(X*Y) := R :- !, R0 is ~concretize(X) * ~concretize(Y), R = ~to_bv(64, R0).
-concretize(X<<Y) := R :- !, R0 is ~concretize(X) << ~concretize(Y), R = ~to_bv(64, R0).
-concretize(X>>Y) := R :- !, R is ~concretize(X) >> ~concretize(Y).
-concretize(ashr(X,Y)) := R :- !, % Like >> but it sets all upper bits to 1 using (-1)<<64 if needed
-	R0 is ~signext(64, ~concretize(X)) >> ~concretize(Y),
-	R = ~to_bv(64, R0).
-concretize(X/\Y) := R :- !, R is ~concretize(X) /\ ~concretize(Y).
-concretize(X\/Y) := R :- !, R is ~concretize(X) \/ ~concretize(Y).
-concretize(X#Y) := R :- !, R is ~concretize(X) # ~concretize(Y).
-concretize(X=Y) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( Xr = Yr -> R = 1 ; R = 0 ).
-concretize(X\=Y) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( Xr \= Yr -> R = 1 ; R = 0 ).
-% unsigned comparison
-concretize(uge(X,Y)) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~unsigned(64,Xr) >= ~unsigned(64,Yr) -> R = 1 ; R = 0 ).
-concretize(ug(X,Y)) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~unsigned(64,Xr) > ~unsigned(64,Yr) -> R = 1 ; R = 0 ).
-concretize(ul(X,Y)) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~unsigned(64,Xr) < ~unsigned(64,Yr) -> R = 1 ; R = 0 ).
-concretize(ule(X,Y)) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~unsigned(64,Xr) =< ~unsigned(64,Yr) -> R = 1 ; R = 0 ).
-% signed comparison
-concretize(X>=Y) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~signext(64,Xr) >= ~signext(64,Yr) -> R = 1 ; R = 0 ).
-concretize(X>Y) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~signext(64,Xr) > ~signext(64,Yr) -> R = 1 ; R = 0 ).
-concretize(X<Y) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~signext(64,Xr) < ~signext(64,Yr) -> R = 1 ; R = 0 ).
-concretize(X=<Y) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( ~signext(64,Xr) =< ~signext(64,Yr) -> R = 1 ; R = 0 ).
-concretize(ite(X,Then,Else)) := R :- !, Xr = ~concretize(X), ( Xr = 1 -> R = ~concretize(Then) ; R = ~concretize(Else) ).
-concretize(X) := _ :- throw(error(unknown_solver_expr(X), concretize/2)).
-
-% Use Size-bit mask
-to_bv(Size,N) := R :- R is ((1<<Size)-1)/\N.
-
-% Extend sign bit from Size-bit to unbound arithmetic
-signext(Size,N) := R :-
-	( 0 =:= N /\ (1<<(Size-1)) -> % sign bit is unset
-	    R = N
-	; SignBits is ((-1)<<Size),
-	  R is (N \/ SignBits)
-	).
-
-% Unsigned sign bit from Size-bit to unbound arithmetic
-unsigned(_,N) := N. % TODO: nothing if the default representation uses to_bv/3
+assign1(element(M,I,V)) :- !, V0 = ~mget(M,I), ( type(V0,var) -> V=V0 ; true ). % TODO: ugly
+assign1(update(M0,I,V,M)) :- !, M = ~mset(M0,I,V).
+assign1(update0(M0,M)) :- !, M = M0.
+assign1(_).
 
 % ---------------------------------------------------------------------------
 
@@ -387,12 +356,14 @@ unsigned(_,N) := N. % TODO: nothing if the default representation uses to_bv/3
 :- export(erase_and_dump_constrs/2).
 % Remove constraints and obtain its goal representation
 % TODO: make it general
-erase_and_dump_constrs(c(M,A), Goal) :-
+erase_and_dump_constrs(X, Goal) :- nonvar(X), X = c(M,A), !,
 	M1 = ~sym_to_map(M),
 	A1 = ~sym_to_map(A),
 	erase_model(c(M,A)),
 	init_mem(M1,M,Goal,Goal0),
 	init_mem(A1,A,Goal0,[]).
+erase_and_dump_constrs(X, []) :- % TODO: incomplete if X contains arrays
+	erase_model(X).
 
 init_mem([],_) --> [].
 init_mem([K=V|D],Arr) --> [element(Arr,K,V)], init_mem(D,Arr).
@@ -420,6 +391,8 @@ unassign([X|Xs], Map) :-
 
 % ---------------------------------------------------------------------------
 % Translate to S-expressions (SMTLIB format)
+
+% TODO: add other solvers
 
 :- use_module(library(port_reify)).
 :- use_module(library(process)).
@@ -466,7 +439,7 @@ has_smt :-
 	),
 	X = yes.
 
-smt_get_model(Goal) :-
+smt_get_model(Goal) :- has_smt,	!,
 	process_call(~z3_bin, ['-in'], [stdin(stream(In)), stdout(string(Out)), status(_), background(PSolver)]),
 	%% ( \+ \+ tell_cmds(user_output, Goal, _) -> true ; true ), % (verbose)
 	once_port_reify(tell_cmds(In, Goal, RevDic), WrPort),
@@ -475,7 +448,7 @@ smt_get_model(Goal) :-
 	port_call(WrPort),
 	%% format("SMT output: ~s~n", [Out]), % (verbose)
 	( rd_es(Answer, Out, []) -> true
-	; throw(error(parse, smt_get_model/2))
+	; throw(error(parse, smt_get_model/1))
 	),
 	( member(unsat, Answer) -> % TODO: use pipe
 	    fail
@@ -483,9 +456,11 @@ smt_get_model(Goal) :-
 	  Answer2 = [sat,sexp([model|Model0])] ->
 	    Model = ~dump_model(Model0, RevDic)
 	    %% \+ \+ ( numbervars(Model,0,_), format("Goal: ~q~nRevDic: ~q~nModel: ~q~n", [Goal, RevDic, Model]) ) % (verbose)
-	; throw(error(unknown_answer(Answer), smt_get_model/2))
+	; throw(error(unknown_answer(Answer), smt_get_model/1))
 	),
 	assign_model(Model).
+smt_get_model(_) :-
+	throw(error(no_solver, smt_get_model/1)).
 
 dump_errors([sexp(['error', string(Str)])|Xs], Ys) :- !,
 	message(warning, ['[smt] ', $$(Str)]),
@@ -523,7 +498,7 @@ filter_noreg([]) := [].
 filter_noreg([X|Xs]) := ~filter_noreg(Xs) :-
 	( X = element(_,K,_), atom(K) % a register
 	; X = update(_,K,_,_), atom(K) % a register
-	; X = arr_eq(_,_)
+	; X = update0(_,_)
 	),
 	!.
 filter_noreg([X|Xs]) := [X| ~filter_noreg(Xs)].
@@ -544,37 +519,6 @@ unifnames(dic(Idx,V,L,R)) :-
 
 scangoal([], _) --> [].
 scangoal([C|Cs], Dic) --> scanlit(C, Dic), scangoal(Cs, Dic).
-
-scanlit(element(A,B,C), Dic) --> !, decl(A,Dic,array64), scanexp(B,Dic), scanexp(C,Dic).
-scanlit(update(A,B,C,D), Dic) --> !, decl(A,Dic,array64), scanexp(B,Dic), scanexp(C,Dic), decl(D,Dic,array64).
-scanlit((A=B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanlit((A\=B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanlit(X, _Dic) --> { throw(unknown(X)) }.
-
-scanexp(A, Dic) --> { var(A) }, !, decl(A, Dic, int64).
-scanexp(+A, Dic) --> !, scanexp(A,Dic).
-scanexp(-A, Dic) --> !, scanexp(A,Dic).
-scanexp(A+B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A-B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A*B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A<<B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A>>B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(ashr(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A/\B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A\/B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A#B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A=B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A\=B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(uge(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(ug(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(ul(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(ule(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A>=B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A>B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A<B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A=<B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(ite(A,B,C), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic), scanexp(C,Dic).
-scanexp(_A, _Dic) --> [].
 
 decl(A, Dic, Type) --> ( { dic_get(Dic, A, _) } -> [] ; { dic_lookup(Dic, A, _) }, [decl(A,Type)] ).
 
