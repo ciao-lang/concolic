@@ -440,7 +440,6 @@ has_smt :-
 	X = yes.
 
 smt_get_model(Goal) :- has_smt,	!,
-	message(error, ['invoking z3']),
 	process_call(~z3_bin, ['-in'], [stdin(stream(In)), stdout(string(Out)), status(_), background(PSolver)]),
 	%% ( \+ \+ tell_cmds(user_output, Goal, _) -> true ; true ), % (verbose)
 	once_port_reify(tell_cmds(In, Goal, RevDic), WrPort),
