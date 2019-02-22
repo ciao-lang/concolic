@@ -42,7 +42,7 @@ get_ext_solver(N) :-
 	).
 
 % ---------------------------------------------------------------------------
-:- doc(section, "Constaints").
+:- doc(section, "Constraints").
 
 % Dic uses "incomplete" data structures to represent maps with
 % symbolic values for keys. Keys must be concrete.
@@ -201,7 +201,7 @@ concretize(-X) := R :- !, R0 is -(~concretize(X)), R = ~to_bv(64, R0).
 concretize(X+Y) := R :- !, R0 is ~concretize(X) + ~concretize(Y), R = ~to_bv(64, R0).
 concretize(X-Y) := R :- !, R0 is ~concretize(X) - ~concretize(Y), R = ~to_bv(64, R0).
 concretize(X*Y) := R :- !, R0 is ~concretize(X) * ~concretize(Y), R = ~to_bv(64, R0).
-concretize(X<<Y) := R :- !, R0 is ~concretize(X) << ~concretize(Y), R = ~to_bv(64, R0).
+concretize(X<<Y) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( Yr > 64 -> R = 0 ; R0 is Xr << Yr, R = ~to_bv(64, R0) ).
 concretize(X>>Y) := R :- !, R is ~concretize(X) >> ~concretize(Y).
 concretize(ashr(X,Y)) := R :- !, % Like >> but it sets all upper bits to 1 using (-1)<<64 if needed
 	R0 is ~signext(64, ~concretize(X)) >> ~concretize(Y),
