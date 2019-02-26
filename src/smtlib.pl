@@ -21,9 +21,8 @@
    representation of S-expressions in SMT-LIB syntax (used for
    communication with SMT solvers)").
 
-:- use_module(library(write)).
-:- use_module(library(streams)).
 :- use_module(library(lists), [length/2]).
+:- use_module(library(streams)).
 
 % ---------------------------------------------------------------------------
 % Write S-expressions to a stream
@@ -37,14 +36,13 @@ wr_e(bitvecval(A,Size), S) :- !,
 	( A >= 0 -> A2 = A
 	; A < 0 -> A2 is (1<<Size)+A % TODO: better way?
 	),
-	display(S, '(_ bv'),
+	display(S, '(_ bv'), % (size in text is size in type)
 	display(S, A2),
 	display(S, ' '),
 	display(S, Size),
 	display(S, ')').
-%	format("#x~16r", [A2]). % (size in text is size in type)
-wr_e(A, S) :- atom(A), !, write(S, A).
-wr_e(A, S) :- integer(A), !, write(S, A).
+wr_e(A, S) :- atom(A), !, display(S, A).
+wr_e(A, S) :- integer(A), !, display(S, A).
 wr_e(vr(N), S) :- !, display(S, 'v!'), display(S, N).
 wr_e(sexp(Xs), S) :- !, wr_sexp(Xs,S). % (internal)
 wr_e(A, _S) :- !, throw(error(unknown(A), wr_e/2)).
@@ -56,23 +54,69 @@ wr_sexp_([], _S).
 wr_sexp_([X|Xs], S) :- display(S,' '), wr_e(X, S), wr_sexp_(Xs, S).
 
 % ---------------------------------------------------------------------------
-% Parse S-expressions from a string
+% Read S-expressions from a stream
 
-:- export(rd_es/3).
-%rd_es(_, Cs, _) :- Cs = [C|_], display(c(C)), nl, fail.
-rd_es([X|Xs]) --> blanks, rd_e(X), !, rd_es(Xs).
-rd_es([]) --> blanks.
+:- export(rd_e/2).
+rd_e(S, X) :-
+	current_input(CurIn),
+	set_input(S),
+	( rd_sexp_codes(Str) ->
+	    ps_e(X, Str, [])
+	; X = end_of_file % TODO: errors?
+	),
+	set_input(CurIn).
 
-%rd_e(_, Cs, _) :- Cs = [C|_], display(d(C)), nl, fail.
-rd_e(sexp(Xs)) --> "(", !, rd_es(Xs), ")".
-rd_e(X) --> idcodes(Cs), !, { X = ~econs(Cs) }.
-rd_e(X) --> numcodes(Cs), !, { X = ~econs(Cs) }.
-rd_e(string(Cs)) --> "\"", !, rd_str(Cs).
+% Read sexp codes
+rd_sexp_codes(Cs) :-
+	rd_sexp_codes_(Cs, 0).
 
-rd_str([]) --> "\"", !.
-rd_str([0'\\|Cs]) --> "\\\\", !, rd_str(Cs).
-rd_str([0'\"|Cs]) --> "\\\"", !, rd_str(Cs).
-rd_str([C|Cs]) --> [C], !, rd_str(Cs).
+rd_sexp_codes_([Ch|Cs], Level) :-
+	getct(Ch,_), % (skip layout)
+	( Ch = -1 -> fail % EOF
+	; rd_sexp_codes1(Ch, Cs, Level)
+	).
+
+rd_sexp_codes1(Ch, Cs, Level) :-
+	( Ch = 0'( -> Level1 is Level+1, rd_sexp_codes2(Cs, Level1)
+	; Ch = 0') -> Level > 0, Level1 is Level-1, rd_sexp_codes3(Cs, Level1)
+	; Ch = 0'" -> rd_sexp_string(Cs, Level)
+        ; rd_sexp_codes2(Cs, Level)
+        ).
+
+rd_sexp_codes2(Cs, Level) :-
+	getct(Ch, Type),
+	( Type = 0, Level = 0 -> Cs = [] % stop, layout
+	; Cs = [Ch|Cs0],
+	  rd_sexp_codes1(Ch, Cs0, Level)
+        ).
+
+rd_sexp_codes3(Cs, 0) :- !, Cs = []. % (closed)
+rd_sexp_codes3(Cs, Level) :- rd_sexp_codes2(Cs, Level).
+
+rd_sexp_string([Ch|Cs], Level) :-
+	getct(Ch,_),
+	( Ch = 0'" -> rd_sexp_codes2(Cs, Level)
+	; Ch = 0'\\ ->
+	    getct(Ch2,_),
+	    Cs=[Ch2|Cs1], rd_sexp_string(Cs1, Level)
+	; rd_sexp_string(Cs, Level)
+        ).
+
+% Parse from string
+ps_es([X|Xs]) --> ps_e(X), !, ps_es(Xs).
+ps_es([]) --> blanks.
+
+ps_e(X) --> blanks, ps_e_(X).
+
+ps_e_(sexp(Xs)) --> "(", !, ps_es(Xs), ")".
+ps_e_(X) --> idcodes(Cs), !, { X = ~econs(Cs) }.
+ps_e_(X) --> numcodes(Cs), !, { X = ~econs(Cs) }.
+ps_e_(string(Cs)) --> "\"", !, ps_str(Cs).
+
+ps_str([]) --> "\"", !.
+ps_str([0'\\|Cs]) --> "\\\\", !, ps_str(Cs).
+ps_str([0'\"|Cs]) --> "\\\"", !, ps_str(Cs).
+ps_str([C|Cs]) --> [C], !, ps_str(Cs).
 
 econs("#x"||Cs) := bitvecval(N, Size) :- !,
 	length(Cs, Size),
@@ -127,3 +171,4 @@ sym_(0'<).
 alpha(X) --> [X], { X>=0'a, X=<0'z -> true ; X>=0'A,X=<0'Z -> true ; fail }. 
 
 blank --> [X], { X=<32 }.
+

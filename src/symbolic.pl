@@ -275,7 +275,6 @@ scanexp(_A, _Dic) --> [].
 % Use with_trace/2 to execute a predicate with some local trace and
 % add_trace/1 to concatenate elements to that trace.
 
-:- use_module(library(lists), [append/3]).
 :- use_module(engine(internals), ['$global_vars_get'/2]). % (reserve 16)
 
 % (very low-level, see mutables.pl implementation for details)
@@ -334,7 +333,17 @@ trace(X) :-
 :- export(get_model/1).
 get_model(Goal) :-
 	prop_array(Goal),
-	smt_get_model(Goal),
+	smt_get_solver(Solver),
+	smt_begin(Solver),
+	smt_assert(Solver, Goal, RevDic),
+	smt_check_sat(Solver, Result),
+	( Result = unsat -> fail
+	; Result = unknown -> throw(error(unknown, get_model/1)) % TODO: what should we do?
+	; Result = sat -> true
+	),
+	smt_get_model(Solver, RevDic),
+	%% \+ \+ ( numbervars(Model,0,_), format("Goal: ~q~nRevDic: ~q~n", [Goal, RevDic]) ) % (verbose)
+	smt_end(Solver),
 	% TODO: (it may not be needed if we get the arrays directly from SMT)
 	( assign_arr(Goal) ->
 	    true
@@ -405,7 +414,7 @@ unassign([X|Xs], Map) :-
 	unassign(Xs, Map0).
 
 % ---------------------------------------------------------------------------
-% Translate to S-expressions (SMTLIB format)
+% SMT interface (via SMTLIB format)
 
 % TODO: add other solvers
 
@@ -454,57 +463,48 @@ has_smt :-
 	),
 	X = yes.
 
-smt_get_model(Goal) :- has_smt,	!,
-	process_call(~z3_bin, ['-in'], [stdin(stream(In)), stdout(string(Out)), status(_), background(PSolver)]),
-	%% ( \+ \+ tell_cmds(user_output, Goal, _) -> true ; true ), % (verbose)
-	once_port_reify(tell_cmds(In, Goal, RevDic), WrPort),
+% :- use_module(library(format)).
+:- use_module(engine(stream_basic), [flush_output/1]).
+
+:- data z3_process/3.
+
+smt_get_solver(Solver) :-
+	Solver = solver(PSolver, In, Out),
+	( z3_process(PSolver, In, Out) ->
+	    true
+	; has_smt ->
+	    process_call(~z3_bin, ['-in'], [stdin(stream(In)), stdout(stream(Out)), status(_), background(PSolver)]),
+	    % message(error, ['starting z3']),
+	    assertz_fact(z3_process(PSolver, In, Out))
+	; throw(error(no_solver, smt_get_solver/1))
+	).
+
+smt_close :-
+	z3_process(PSolver, In, Out), !,
 	close(In),
+	close(Out),
 	process_join(PSolver),
-	port_call(WrPort),
-	%% format("SMT output: ~s~n", [Out]), % (verbose)
-	( rd_es(Answer, Out, []) -> true
-	; throw(error(parse, smt_get_model/1))
-	),
-	( member(unsat, Answer) -> % TODO: use pipe
-	    fail
-	; dump_errors(Answer, Answer2),
-	  Answer2 = [sat,sexp([model|Model0])] ->
-	    Model = ~dump_model(Model0, RevDic)
-	    %% \+ \+ ( numbervars(Model,0,_), format("Goal: ~q~nRevDic: ~q~nModel: ~q~n", [Goal, RevDic, Model]) ) % (verbose)
-	; throw(error(unknown_answer(Answer), smt_get_model/1))
-	),
-	assign_model(Model).
-smt_get_model(_) :-
-	throw(error(no_solver, smt_get_model/1)).
+	retractall_fact(z3_process(_,_,_)).
+smt_close.
 
-dump_errors([sexp(['error', string(Str)])|Xs], Ys) :- !,
-	message(warning, ['[smt] ', $$(Str)]),
-	dump_errors(Xs, Ys).
-dump_errors([X|Xs], [X|Ys]) :- !,
-	dump_errors(Xs, Ys).
-dump_errors([], []).
+% ---------------------------------------------------------------------------
 
-assign_model([X=V|Cs]) :- integer(V), !, X = ~newsym(V), assign_model(Cs).
-assign_model([]).
-
-dump_model([sexp(['define-fun', vr(Idx), sexp([]), sexp(['_','BitVec',_]), bitvecval(V,_)])|Xs], RevDic, [X=V|Cs]) :-
-	dic_get(RevDic, Idx, X),
-	!,
-	dump_model(Xs, RevDic, Cs).
-dump_model([_|Xs], RevDic, Cs) :- !,
-	dump_model(Xs, RevDic, Cs).
-dump_model([], _, []).
+smt_assert(Solver, Goal, RevDic) :-
+	Solver = solver(_PSolver, In, _Out),
+%	( \+ \+ tell_cmds(user_output, Goal, _) -> true ; true ), % (verbose)
+	smt_assert_(In, Goal, RevDic),
+	flush_output(In).
 
 % Rewrite goal and tell SMT commands (declarations, assert, check sat, get model, etc.)
-tell_cmds(S, Goal0, RevDic) :-
+smt_assert_(S, Goal0, RevDic) :-
 	Goal = ~filter_noreg(Goal0),
 	( scangoal(Goal, _Dic, Decls, []) -> true
 	; throw(scangoal_failed(Goal))
 	),
 	namedecls(Decls, 0, RevDic),
+	rw_cmds(Decls, Goal, Cmds, []),
 	\+ \+ (
 	  unifnames(RevDic),
-	  rw_cmds(Decls, Goal, Cmds, []),
 	  wr_es(Cmds, S)).
 
 % Ignore array constraints with constant atomic keys (registers)
@@ -538,19 +538,37 @@ scangoal([C|Cs], Dic) --> scanlit(C, Dic), scangoal(Cs, Dic).
 decl(A, Dic, Type) --> ( { dic_get(Dic, A, _) } -> [] ; { dic_lookup(Dic, A, _) }, [decl(A,Type)] ).
 
 rw_cmds(Decls, Goal) -->
-	rw_begin,
 	rw_decls(Decls),
-	rw_goal(Goal),
-	rw_end.
+	rw_goal(Goal).
 
-rw_e(A) := _ :- var(A), !, throw(error(unknown(A), rw_e/2)).
-% rw_e(A) := R :- var(A), !, R = A.
+rw_decls([]) --> [].
+rw_decls([decl(X,Type)|Ds]) -->
+	( { Type = int64 } ->
+	    [sexp(['declare-fun',~rw_e(X),sexp([]),'Int64'])]
+	; { Type = array64 } ->
+	    [sexp(['declare-fun',~rw_e(X),sexp([]),'Array64'])]
+	; { fail }
+	),
+	rw_decls(Ds).
+
+rw_goal([]) --> [].
+rw_goal([X|Cs]) --> { Y = ~rw_g(X) }, [Y], rw_goal(Cs).
+
+rw_g(A) := _ :- var(A) , !, throw(unknown_g(A)).
+rw_g(A=B) := sexp(['assert',~rw_sexp('=',[A,B])]) :- !.
+rw_g(A\=B) := sexp(['assert',sexp(['not',~rw_sexp('=',[A,B])])]) :- !.
+rw_g(element(A,B,C)) := sexp(['assert',sexp(['=',~rw_sexp('select',[A,B]), ~rw_e(C)])]) :- !.
+rw_g(update(A,B,C,D)) := sexp(['assert',sexp(['=',~rw_sexp('store',[A,B,C]), ~rw_e(D)])]) :- !.
+rw_g(A) := _ :- !, throw(unknown_g(A)).
+
+rw_e(A) := R :- var(A), !, R = A. % (note: it should be renamed later)
 rw_e(A) := bitvecval(A,64) :- integer(A), !. % TODO: ad-hoc
 rw_e(A) := A :- atom(A), !. % TODO: sure?
 rw_e(A) := vr(Idx) :- A = vr(Idx), !.
 rw_e(-A) := ~rw_sexp('bvneg',[A]) :- !.
 rw_e(A+B) := ~rw_sexp('bvadd',[A,B]) :- !.
 rw_e(A-B) := ~rw_sexp('bvsub',[A,B]) :- !.
+rw_e(A*B) := ~rw_sexp('bvmul',[A,B]) :- !.
 rw_e(A<<B) := ~rw_sexp('bvshl',[A,B]) :- !.
 rw_e(A>>B) := ~rw_sexp('bvlshr',[A,B]) :- !.
 rw_e(ashr(A,B)) := ~rw_sexp('bvashr',[A,B]) :- !.
@@ -590,32 +608,80 @@ rw_sexp(F, Xs) := R :- R = sexp([F| ~rw_es(Xs)]).
 rw_es([]) := [].
 rw_es([X|Xs]) := [~rw_e(X)| ~rw_es(Xs)].
 
+% ---------------------------------------------------------------------------
+% Send/receive S-exp to/from the solver
+
+smt_send(solver(_,In,_), Cmds) :-
+	wr_es(Cmds, In),
+	flush_output(In).
+
+smt_recv(Solver, Answer) :-
+	Solver = solver(_PSolver, _In, Out),
+	%% format("SMT output: ~s~n", [Out]), % (verbose)
+	rd_answer(Out, Answer).
+
+rd_answer(S, X) :-
+	( rd_e(S, X0) -> true
+	; throw(error(parse, smt_recv/2))
+	),
+	( X0 = sexp(['error', string(_Str)]) ->
+%	    message(warning, ['[smt] ', $$(Str)]),
+	    rd_answer(S, X)
+	; X = X0
+%	  message(error, ['rda: ', X])
+	).
+
+% ---------------------------------------------------------------------------
+
+smt_begin(Solver) :-
+	rw_begin(Cmds, []),
+	smt_send(Solver, Cmds).
+
 rw_begin -->
+	[sexp(['reset'])],
 	[sexp(['define-sort', 'Int64', sexp([]), sexp(['_', 'BitVec', '64'])])],
 	[sexp(['define-sort', 'Array64', sexp([]), sexp(['Array', 'Int64', 'Int64'])])].
 
-rw_end -->
-	[sexp(['check-sat'])],
-	[sexp(['get-model'])],
-	[sexp(['exit'])].
+% ---------------------------------------------------------------------------
 
-rw_decls([]) --> [].
-rw_decls([decl(X,Type)|Ds]) -->
-	( { Type = int64 } ->
-	    [sexp(['declare-fun',~rw_e(X),sexp([]),'Int64'])]
-	; { Type = array64 } ->
-	    [sexp(['declare-fun',~rw_e(X),sexp([]),'Array64'])]
-	; { fail }
+:- compilation_fact(keep_alive).
+:- if(defined(keep_alive)).
+smt_end(_). % keep alive
+:- else.
+% % (Exit the solver)
+smt_end(Solver) :- smt_send(Solver, [sexp(['exit'])]), smt_close.
+:- endif.
+
+% ---------------------------------------------------------------------------
+
+smt_check_sat(Solver, Result) :-
+	smt_send(Solver, [sexp(['check-sat'])]),
+	smt_recv(Solver, Result0),
+	( Result0 = unsat -> Result = unsat
+	; Result0 = sat -> Result = sat
+	; Result0 = unknown -> Result = unknown
+	; throw(error(unknown_answer(Result0), smt_check_sat/2))
+	).
+
+% ---------------------------------------------------------------------------
+
+smt_get_model(Solver, RevDic) :-
+	smt_send(Solver, [sexp(['get-model'])]),
+	smt_recv(Solver, Answer),
+	( Answer = sexp([model|Model0]) ->
+	    Model = ~dump_model(Model0, RevDic)
+	; throw(error(unknown_answer(Answer), smt_get_model/2))
 	),
-	rw_decls(Ds).
+	assign_model(Model).
 
-rw_goal([]) --> [].
-rw_goal([X|Cs]) --> { Y = ~rw_g(X) }, [Y], rw_goal(Cs).
+assign_model([X=V|Cs]) :- integer(V), !, X = ~newsym(V), assign_model(Cs).
+assign_model([]).
 
-rw_g(A) := _ :- var(A) , !, throw(unknown_g(A)).
-rw_g(A=B) := sexp(['assert',~rw_sexp('=',[A,B])]) :- !.
-rw_g(A\=B) := sexp(['assert',sexp(['not',~rw_sexp('=',[A,B])])]) :- !.
-rw_g(element(A,B,C)) := sexp(['assert',sexp(['=',~rw_sexp('select',[A,B]), ~rw_e(C)])]) :- !.
-rw_g(update(A,B,C,D)) := sexp(['assert',sexp(['=',~rw_sexp('store',[A,B,C]), ~rw_e(D)])]) :- !.
-rw_g(A) := _ :- !, throw(unknown_g(A)).
+dump_model([sexp(['define-fun', vr(Idx), sexp([]), sexp(['_','BitVec',_]), bitvecval(V,_)])|Xs], RevDic, [X=V|Cs]) :-
+	dic_get(RevDic, Idx, X),
+	!,
+	dump_model(Xs, RevDic, Cs).
+dump_model([_|Xs], RevDic, Cs) :- !,
+	dump_model(Xs, RevDic, Cs).
+dump_model([], _, []).
 
