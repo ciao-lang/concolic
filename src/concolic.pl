@@ -62,21 +62,50 @@ conc_cond(C) := CondV :- C=(A=B), !,
 
 % ---------------------------------------------------------------------------
 % NOTE: numbervars/3 and melt/2 are a workaround for a limit in the
-%   number of free variables in dynamic predicates
+%   number of free variables in dynamic predicates, and assert items
+%   individually. erase_model/1 is needed in any case.
+%   
 
 :- use_module(library(write), [numbervars/3]).
 
-:- data saved_sympath/1.
+%:- data saved_sympath/1.
+:- data savedpath/2.
 
 reset_saved_sympath :-
-	retractall_fact(saved_sympath(_)).
+%	retractall_fact(saved_sympath(_)).
+	retractall_fact(savedpath(_,_)).
 
-retract_saved_sympath(X) :-
-	retract_fact(saved_sympath(X0)),
-	melt(X0, X).
+retract_saved_sympath(Xs) :-
+%	retract_fact(saved_sympath(Xs0)), % TODO: a single term reach other db limits
+	retract_fact(savedpath(inconf, InConf0)),
+	retract_saved_sympath_lst(sympath, SymPath0),
+	retract_saved_sympath_lst(negmarks, NegMarks0),
+        Xs0 = (InConf0,SymPath0,NegMarks0),
+	melt(Xs0, Xs).
 
-asserta_saved_sympath(X) :-
-	\+ \+ (erase_model(X), numbervars(X,1,_), asserta_fact(saved_sympath(X))).
+asserta_saved_sympath(Xs) :-
+	\+ \+ (
+          erase_model(Xs),
+	  numbervars(Xs,1,_),
+%	  asserta_fact(saved_sympath(Xs)) % TODO: a single term reach other db limits
+	  Xs = (InConf,SymPath,NegMarks),
+	  assertz_fact(savedpath(inconf, InConf)),
+	  asserta_saved_sympath_lst(sympath, SymPath),
+	  asserta_saved_sympath_lst(negmarks, NegMarks)
+        ).
+
+retract_saved_sympath_lst(Arg, Xs) :-
+	retract_fact(savedpath(Arg, X)), !,
+	Xs = [X|Xs0],
+	retract_saved_sympath_lst(Arg, Xs0).
+retract_saved_sympath_lst(_Arg, []).
+
+asserta_saved_sympath_lst(Arg, Xs) :-
+	( member(X, Xs),
+	    assertz_fact(savedpath(Arg, X)),
+	    fail
+	; true
+	).
 
 % Negate last condition and find an input model.
 % If a model is not found, negate the previous condition and try again.
