@@ -19,6 +19,7 @@
 
 :- use_module(library(lists)).
 :- use_module(concolic(symbolic)).
+:- use_module(engine(runtime_control), [statistics/2]).
 
 :- doc(module, "This module implements a (more or less) generic
    concolic search algorithm. See @pred{conc_call/3} for details.").
@@ -59,6 +60,10 @@ conc_cond(C) := CondV :- C=(A=B), !,
 	; Cond = ~negcond(C), CondV=0
 	),
 	trace(sym(cond(Cond))).
+
+:- export(conc_stats/2).
+% Collect statistisc for concolic runs (erased for each new solution)
+:- data conc_stats/2.
 
 % ---------------------------------------------------------------------------
 % NOTE: numbervars/3 and melt/2 are a workaround for a limit in the
@@ -110,6 +115,7 @@ asserta_saved_sympath_lst(Arg, Xs) :-
 % Negate last condition and find an input model.
 % If a model is not found, negate the previous condition and try again.
 next_input(InConf, InGoal, NewNegMarks) :-
+	retractall_fact(conc_stats(_,_)),
 	retract_saved_sympath((InConf,SymPath,NegMarks)),
 	next_input_(InGoal,SymPath,NegMarks,NewNegMarks).
 
@@ -126,12 +132,18 @@ next_input_(InGoal,SymPath,NegMarks,NewNegMarks) :-
 	%
 	% Find a model that satisfy InGoal and NewSymPath.
         % The new model is implicitly assigned to the symbolic variables.
+	length(NewSymPath, SymPathLen), % (for statistics)
 	Goal = ~append(InGoal,~pathgoal(NewSymPath)),
 	%
+	statistics(walltime, [T0, _]),
 	( get_model(Goal) ->
+	    statistics(walltime, [T1, _]), T is T1-T0,
+	    assertz_fact(conc_stats(SymPathLen,T)),
 	    log('[concolic] new input model found'),
 	    NewNegMarks = NewNegMarks0
-	; log('[concolic] no model found, negate previous condition...'),
+	; statistics(walltime, [T1, _]), T is T1-T0,
+	  assertz_fact(conc_stats(SymPathLen,T)),
+	  log('[concolic] no model found, negate previous condition...'),
 	  SymPathPrev = ~removelastcond(SymPath1), % (it should not fail)
 	  next_input_(InGoal,SymPathPrev,~only_negmarks(SymPathPrev),NewNegMarks)
 	).
