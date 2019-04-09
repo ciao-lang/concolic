@@ -62,8 +62,20 @@ conc_cond(C) := CondV :- C=(A=B), !,
 	trace(sym(cond(Cond))).
 
 :- export(conc_stats/3).
-% Collect statistisc for concolic runs (erased for each new solution)
+% Collect statistics for concolic runs (erased for each new solution)
 :- data conc_stats/3.
+
+% Timeout for computing next path (optional)
+:- data conc_nextpath_timeout/1.
+
+get_nextpath_timeout := T :-
+	( conc_nextpath_timeout(T0) -> T = T0
+	; T = 0 % (disabled)
+	).
+
+:- export(set_nextpath_timeout/1).
+set_nextpath_timeout(T) :-
+	set_fact(conc_nextpath_timeout(T)).
 
 % ---------------------------------------------------------------------------
 % NOTE: numbervars/3 and melt/2 are a workaround for a limit in the
@@ -135,6 +147,7 @@ next_input_(InGoal,SymPath,NegMarks,NewNegMarks) :-
 	length(NewSymPath, SymPathLen), % (for statistics)
 	Goal = ~append(InGoal,~pathgoal(NewSymPath)),
 	%
+	set_solver_opt(timeout, ~get_nextpath_timeout),
 	statistics(walltime, [T0, _]),
 	get_model(Goal, Status),
 	statistics(walltime, [T1, _]), T is T1-T0,
