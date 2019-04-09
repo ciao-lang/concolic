@@ -29,16 +29,17 @@
 % ---------------------------------------------------------------------------
 :- doc(section, "Flags").
 
-:- data ext_solver/1.
+:- data solver_opt/2.
 
-:- export(set_ext_solver/1).
-set_ext_solver(N) :-
-	set_fact(ext_solver(N)).
+:- export(set_solver_opt/2).
+set_solver_opt(Opt, Val) :-
+	retractall_fact(solver_opt(Opt, _)),
+	assertz_fact(solver_opt(Opt, Val)).
 
-:- export(get_ext_solver/1).
-get_ext_solver(N) :-
-	( ext_solver(N0) -> N0 = N
-	; N = z3 % default
+:- export(get_solver_opt/2).
+get_solver_opt(Opt, Val) :-
+	( solver_opt(Opt, Val0) -> Val = Val0
+	; fail
 	).
 
 % ---------------------------------------------------------------------------
@@ -330,25 +331,40 @@ trace(X) :-
 % ---------------------------------------------------------------------------
 :- doc(section, "Solver").
 
-:- export(get_model/1).
-get_model(Goal) :-
+:- export(get_model/2).
+get_model(Goal, Status) :-
 	prop_array(Goal),
 	smt_get_solver(Solver),
 	smt_begin(Solver),
 	smt_assert(Solver, Goal, RevDic),
 	smt_check_sat(Solver, Result),
-	( Result = unsat -> fail
-	; Result = unknown -> throw(error(unknown, get_model/1)) % TODO: what should we do?
-	; Result = sat -> true
+	( sat_result(Result) -> true
+	; throw(error(bad_status(Result), get_model/2))
 	),
-	smt_get_model(Solver, RevDic),
-	%% \+ \+ ( numbervars(Model,0,_), format("Goal: ~q~nRevDic: ~q~n", [Goal, RevDic]) ) % (verbose)
-	smt_end(Solver),
-	% TODO: (it may not be needed if we get the arrays directly from SMT)
-	( assign_arr(Goal) ->
-	    true
-	; % Note: this should not happen
-	  throw(error(could_not_reconstruct_model, get_model/1))
+	Status = Result,
+	( Status = sat ->
+	    smt_get_model(Solver, RevDic),
+	    %% \+ \+ ( numbervars(Model,0,_), format("Goal: ~q~nRevDic: ~q~n", [Goal, RevDic]) ) % (verbose)
+	    smt_end(Solver),
+	    % TODO: (it may not be needed if we get the arrays directly from SMT)
+	    ( assign_arr(Goal) ->
+	        true
+	    ; % Note: this should not happen
+	      throw(error(could_not_reconstruct_model, get_model/1))
+	    )
+	; true
+	).
+
+sat_result(sat).
+sat_result(unsat).
+sat_result(unknown).
+
+:- export(get_model/1).
+get_model(Goal) :-
+	get_model(Goal, Status),
+	( Status = unsat -> fail
+	; Status = unknown -> throw(error(unknown, get_model/1)) % TODO: what should we do?
+	; Status = sat -> true
 	).
 
 % TODO: Very incomplete... implement real propagation or use a SMT
@@ -655,6 +671,11 @@ smt_end(Solver) :- smt_send(Solver, [sexp(['exit'])]), smt_close.
 % ---------------------------------------------------------------------------
 
 smt_check_sat(Solver, Result) :-
+	( get_solver_opt(timeout, TO) ->
+	    % (value 0 is treated as no timeout)
+	    smt_send(Solver, [sexp(['set-option', ':timeout', TO])])
+	; true
+	),
 	smt_send(Solver, [sexp(['check-sat'])]),
 	smt_recv(Solver, Result0),
 	( Result0 = unsat -> Result = unsat
