@@ -61,9 +61,9 @@ conc_cond(C) := CondV :- C=(A=B), !,
 	),
 	trace(sym(cond(Cond))).
 
-:- export(conc_stats/2).
+:- export(conc_stats/3).
 % Collect statistisc for concolic runs (erased for each new solution)
-:- data conc_stats/2.
+:- data conc_stats/3.
 
 % ---------------------------------------------------------------------------
 % NOTE: numbervars/3 and melt/2 are a workaround for a limit in the
@@ -115,7 +115,7 @@ asserta_saved_sympath_lst(Arg, Xs) :-
 % Negate last condition and find an input model.
 % If a model is not found, negate the previous condition and try again.
 next_input(InConf, InGoal, NewNegMarks) :-
-	retractall_fact(conc_stats(_,_)),
+	retractall_fact(conc_stats(_,_,_)),
 	retract_saved_sympath((InConf,SymPath,NegMarks)),
 	next_input_(InGoal,SymPath,NegMarks,NewNegMarks).
 
@@ -136,13 +136,13 @@ next_input_(InGoal,SymPath,NegMarks,NewNegMarks) :-
 	Goal = ~append(InGoal,~pathgoal(NewSymPath)),
 	%
 	statistics(walltime, [T0, _]),
-	( get_model(Goal) ->
-	    statistics(walltime, [T1, _]), T is T1-T0,
-	    assertz_fact(conc_stats(SymPathLen,T)),
+	get_model(Goal, Status),
+	statistics(walltime, [T1, _]), T is T1-T0,
+	assertz_fact(conc_stats(SymPathLen,T,Status)),
+	( Status = sat ->
 	    log('[concolic] new input model found'),
 	    NewNegMarks = NewNegMarks0
-	; statistics(walltime, [T1, _]), T is T1-T0,
-	  assertz_fact(conc_stats(SymPathLen,T)),
+	; % unknown or unsat
 	  log('[concolic] no model found, negate previous condition...'),
 	  SymPathPrev = ~removelastcond(SymPath1), % (it should not fail)
 	  next_input_(InGoal,SymPathPrev,~only_negmarks(SymPathPrev),NewNegMarks)
