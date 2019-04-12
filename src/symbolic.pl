@@ -239,36 +239,36 @@ signext(Size,N) := R :-
 % Unsigned sign bit from Size-bit to unbound arithmetic
 unsigned(_,N) := N. % TODO: nothing if the default representation uses to_bv/3
 
-scanlit(element(A,B,C), Dic) --> !, decl(A,Dic,array64), scanexp(B,Dic), scanexp(C,Dic).
-scanlit(update(A,B,C,D), Dic) --> !, decl(A,Dic,array64), scanexp(B,Dic), scanexp(C,Dic), decl(D,Dic,array64).
-scanlit((A=B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanlit((A\=B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanlit(X, _Dic) --> { throw(unknown(X)) }.
+scanlit(element(A,B,C), Dic0, Dic) --> !, decl(A,array64,Dic0,Dic1), scanexp(B,Dic1,Dic2), scanexp(C,Dic2,Dic).
+scanlit(update(A,B,C,D), Dic0, Dic) --> !, decl(A,array64,Dic0,Dic1), scanexp(B,Dic1,Dic2), scanexp(C,Dic2,Dic3), decl(D,array64,Dic3,Dic).
+scanlit((A=B), Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanlit((A\=B), Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanlit(X, _, _) --> { throw(unknown(X)) }.
 
-scanexp(A, Dic) --> { var(A) }, !, decl(A, Dic, int64).
-scanexp(+A, Dic) --> !, scanexp(A,Dic).
-scanexp(-A, Dic) --> !, scanexp(A,Dic).
-scanexp(A+B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A-B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A*B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A<<B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A>>B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(ashr(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A/\B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A\/B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A#B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A=B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A\=B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(uge(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(ug(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(ul(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(ule(A,B), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A>=B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A>B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A<B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(A=<B, Dic) --> !, scanexp(A,Dic), scanexp(B,Dic).
-scanexp(ite(A,B,C), Dic) --> !, scanexp(A,Dic), scanexp(B,Dic), scanexp(C,Dic).
-scanexp(_A, _Dic) --> [].
+scanexp(A, Dic0, Dic) --> { var(A) }, !, decl(A, int64, Dic0, Dic).
+scanexp(+A, Dic0, Dic) --> !, scanexp(A,Dic0,Dic).
+scanexp(-A, Dic0, Dic) --> !, scanexp(A,Dic0,Dic).
+scanexp(A+B, Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(A-B, Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(A*B, Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(A<<B, Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(A>>B, Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(ashr(A,B), Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(A/\B, Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(A\/B, Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(A#B, Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(A=B, Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(A\=B, Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(uge(A,B), Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(ug(A,B), Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(ul(A,B), Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(ule(A,B), Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(A>=B, Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(A>B, Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(A<B, Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(A=<B, Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanexp(ite(A,B,C), Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic2), scanexp(C,Dic2,Dic).
+scanexp(_A, Dic, Dic) --> [].
 
 % ---------------------------------------------------------------------------
 :- doc(section, "Derivation trace (both symbolic constraints and custom items)").
@@ -276,35 +276,17 @@ scanexp(_A, _Dic) --> [].
 % Use with_trace/2 to execute a predicate with some local trace and
 % add_trace/1 to concatenate elements to that trace.
 
-:- use_module(engine(internals), ['$global_vars_get'/2]). % (reserve 16)
-
-% (very low-level, see mutables.pl implementation for details)
-:- use_module(engine(internals), ['$setarg'/4]).
-:- import(internals, ['$global_vars_get_root'/1]).
+:- use_module(engine(internals), ['$global_vars_get'/2, '$global_vars_set'/2]). % (reserve 16)
 
 get_trace(X) :-
-	'$global_vars_get'(16,tr(X)).
+	'$global_vars_get'(16,V0),
+	( V0=0 -> % (uninitialized)
+	    X=[] % (just some default value)
+	; V0=tr(X)
+	).
 
 set_trace(X) :-
 	'$global_vars_set'(16,tr(X)).
-
-'$global_vars_set'(I, X) :-
-        '$global_vars_get_root'(R),
-	'$setarg'(I, R, X, on).
-
-% (not significantly faster or slower)
-%% :- use_module(engine(attributes)).
-%% 
-%% get_trace(X) :-
-%% 	'$global_vars_get'(16,G),
-%% 	( type(G,attv) -> get_attribute(G,tr(X))
-%% 	; attach_attribute(G,tr(X))
-%% 	).
-%% 
-%% set_trace(X) :-
-%% 	'$global_vars_get'(16,G),
-%% 	( type(G,attv) -> detach_attribute(G) ; true ),
-%% 	  attach_attribute(G,tr(X)).
 
 :- export(with_trace/2).
 :- meta_predicate with_trace(?,goal).
@@ -369,13 +351,17 @@ get_model(Goal) :-
 
 % TODO: Very incomplete... implement real propagation or use a SMT
 % propagate some array constraints for registers
+% TODO: use something better than assoc (attr?)
 prop_array(Goal) :-
-	prop_array_(Goal, _).
+	empty_assoc(Dic0),
+	prop_array_(Goal, Dic0).
 
 prop_array_([], _).
-prop_array_([element(A,K,V)|Cs], Dic) :- atom(K), var(V), !,
-	dic_lookup(Dic,(A,K),V),
-	prop_array_(Cs, Dic).
+prop_array_([element(A,K,V)|Cs], Dic0) :- atom(K), var(V), !,
+	( get_assoc((A,K), Dic0, V0) -> V = V0, Dic1 = Dic0
+	; put_assoc((A,K), Dic0, V, Dic1)
+	),
+	prop_array_(Cs, Dic1).
 prop_array_([_|Cs], Dic) :-
 	prop_array_(Cs, Dic).
 
@@ -438,6 +424,7 @@ unassign([X|Xs], Map) :-
 :- use_module(library(process)).
 :- use_module(library(streams), [close/1]).
 :- use_module(library(dict)).
+:- use_module(library(assoc)).
 :- use_module(engine(messages_basic), [message/2]).
 :- use_module(library(system), [file_exists/1, current_executable/1, find_executable/2]).
 :- use_module(library(pathnames), [path_concat/3, path_split/3]).
@@ -489,10 +476,20 @@ smt_get_solver(Solver) :-
 	( z3_process(PSolver, In, Out) ->
 	    true
 	; has_smt ->
-	    process_call(~z3_bin, ['-in'], [stdin(stream(In)), stdout(stream(Out)), status(_), background(PSolver)]),
+	    process_call(~z3_bin, ['-in'|~solver_args],
+	      [stdin(stream(In)), stdout(stream(Out)), status(_), background(PSolver)]),
 	    % message(error, ['starting z3']),
 	    assertz_fact(z3_process(PSolver, In, Out))
 	; throw(error(no_solver, smt_get_solver/1))
+	).
+
+% TODO: document 'hard_timeout' (currently unused)
+solver_args(Args) :-
+	( get_solver_opt(hard_timeout, HardTO) ->
+	    HardTOsec is ceiling(HardTO/1000.0), % seconds from ms, no float is allowed
+	    atom_codes(OptTO, "-T:"||(~number_codes(HardTOsec))),
+	    Args = [OptTO]
+	; Args = []
 	).
 
 smt_close :-
@@ -514,10 +511,12 @@ smt_assert(Solver, Goal, RevDic) :-
 % Rewrite goal and tell SMT commands (declarations, assert, check sat, get model, etc.)
 smt_assert_(S, Goal0, RevDic) :-
 	Goal = ~filter_noreg(Goal0),
-	( scangoal(Goal, _Dic, Decls, []) -> true
+	empty_assoc(Dic0),
+	( scangoal(Goal, Dic0, _Dic, Decls, []) -> true
 	; throw(scangoal_failed(Goal))
 	),
-	namedecls(Decls, 0, RevDic),
+	empty_assoc(RevDic0),
+	namedecls(Decls, 0, RevDic0, RevDic),
 	rw_cmds(Decls, Goal, Cmds, []),
 	\+ \+ (
 	  unifnames(RevDic),
@@ -535,23 +534,27 @@ filter_noreg([X|Xs]) := ~filter_noreg(Xs) :-
 filter_noreg([X|Xs]) := [X| ~filter_noreg(Xs)].
 
 % give names to declared variables (assume no repetitions)
-namedecls([], _, _).
-namedecls([decl(X,_)|Cs], Idx, Dic) :-
+namedecls([], _, Dic, Dic).
+namedecls([decl(X,_)|Cs], Idx, Dic0, Dic) :-
 	Idx1 is Idx + 1,
-	dic_lookup(Dic, Idx, X),
-	namedecls(Cs, Idx1, Dic).
+	put_assoc(Idx, Dic0, X, Dic1),
+	namedecls(Cs, Idx1, Dic1, Dic).
 
 % unify vars with its name
-unifnames(X) :- var(X), !.
-unifnames(dic(Idx,V,L,R)) :-
-	V = vr(Idx),
-	unifnames(L),
-	unifnames(R).
+unifnames(Dic) :-
+	assoc_to_list(Dic, KVs),
+	unifnames_(KVs).
 
-scangoal([], _) --> [].
-scangoal([C|Cs], Dic) --> scanlit(C, Dic), scangoal(Cs, Dic).
+unifnames_([]).
+unifnames_([vr(Idx)-Idx|KVs]) :- unifnames_(KVs).
 
-decl(A, Dic, Type) --> ( { dic_get(Dic, A, _) } -> [] ; { dic_lookup(Dic, A, _) }, [decl(A,Type)] ).
+scangoal([], Dic, Dic) --> [].
+scangoal([C|Cs], Dic0, Dic) --> scanlit(C, Dic0, Dic1), scangoal(Cs, Dic1, Dic).
+
+decl(A, Type, Dic0, Dic) -->
+	( { get_assoc(A, Dic0, _) } -> { Dic = Dic0 } % TODO: error?
+	; { put_assoc(A, Dic0, _, Dic) }, [decl(A,Type)]
+	).
 
 rw_cmds(Decls, Goal) -->
 	rw_decls(Decls),
@@ -699,7 +702,7 @@ assign_model([X=V|Cs]) :- integer(V), !, X = ~newsym(V), assign_model(Cs).
 assign_model([]).
 
 dump_model([sexp(['define-fun', vr(Idx), sexp([]), sexp(['_','BitVec',_]), bitvecval(V,_)])|Xs], RevDic, [X=V|Cs]) :-
-	dic_get(RevDic, Idx, X),
+	get_assoc(Idx, RevDic, X),
 	!,
 	dump_model(Xs, RevDic, Cs).
 dump_model([_|Xs], RevDic, Cs) :- !,
