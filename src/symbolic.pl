@@ -546,7 +546,7 @@ unifnames(Dic) :-
 	unifnames_(KVs).
 
 unifnames_([]).
-unifnames_([vr(Idx)-Idx|KVs]) :- unifnames_(KVs).
+unifnames_([Idx-vr(Idx)|KVs]) :- unifnames_(KVs).
 
 scangoal([], Dic, Dic) --> [].
 scangoal([C|Cs], Dic0, Dic) --> scanlit(C, Dic0, Dic1), scangoal(Cs, Dic1, Dic).
