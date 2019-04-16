@@ -202,24 +202,24 @@ removelastcond_([_|SymPath]) := ~removelastcond_(SymPath) :- !.
 
 % ---------------------------------------------------------------------------
 
-melt(X,Y) :- melt1(X,Y,_), !.
+:- use_module(library(assoc)).
 
-melt1(X,Y,S) :- X = '$VAR'(_), !, assoc(X,Y,S).
-melt1(X,X,_) :- atomic(X), !.
-melt1(X,Y,S) :- functor(X,F,N), functor(Y,F,N), meltargs(1,N,X,Y,S).
+melt(X,Y) :- empty_assoc(Dic0), melt1(X,Y,Dic0,_).
 
-meltargs(I,N,_,_,_) :- I > N, !.
-meltargs(I,N,X,Y,S) :-
+melt1(X,Y,Dic0,Dic) :- X = '$VAR'(I), !,
+	( get_assoc(I, Dic0, Y0) -> Y = Y0, Dic = Dic0
+	; put_assoc(I, Dic0, Y, Dic)
+	).
+melt1(X,X,Dic,Dic) :- atomic(X), !.
+melt1(X,Y,Dic0,Dic) :- functor(X,F,N), functor(Y,F,N), meltargs(1,N,X,Y,Dic0,Dic).
+
+meltargs(I,N,_,_,Dic,Dic) :- I > N, !.
+meltargs(I,N,X,Y,Dic0,Dic) :-
 	arg(I,X,Xi),
-	melt1(Xi,Yi,S),
+	melt1(Xi,Yi,Dic0,Dic1),
 	arg(I,Y,Yi),
 	I1 is I+1,
-	meltargs(I1,N,X,Y,S).
-
-assoc(X,Y,[assoc(X,Y)|_]) :- !.
-assoc(X,Y,[_|S]) :- assoc(X,Y,S).
-
-variable('$VAR'(_)).	
+	meltargs(I1,N,X,Y,Dic1,Dic).
 
 % ---------------------------------------------------------------------------
 
