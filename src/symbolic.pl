@@ -359,7 +359,7 @@ prop_array(Goal) :-
 prop_array_([], _).
 prop_array_([element(A,K,V)|Cs], Dic0) :- atom(K), var(V), !,
 	( get_assoc((A,K), Dic0, V0) -> V = V0, Dic1 = Dic0
-	; put_assoc((A,K), Dic0, V, Dic1), ! % TODO: add missing cuts in assoc.pl
+	; put_assoc((A,K), Dic0, V, Dic1)
 	),
 	prop_array_(Cs, Dic1).
 prop_array_([_|Cs], Dic) :-
@@ -537,7 +537,7 @@ filter_noreg([X|Xs]) := [X| ~filter_noreg(Xs)].
 namedecls([], _, Dic, Dic).
 namedecls([decl(X,_)|Cs], Idx, Dic0, Dic) :-
 	Idx1 is Idx + 1,
-	put_assoc(Idx, Dic0, X, Dic1), !, % TODO: add missing cuts in assoc.pl
+	put_assoc(Idx, Dic0, X, Dic1),
 	namedecls(Cs, Idx1, Dic1, Dic).
 
 % unify vars with its name
@@ -553,7 +553,7 @@ scangoal([C|Cs], Dic0, Dic) --> scanlit(C, Dic0, Dic1), scangoal(Cs, Dic1, Dic).
 
 decl(A, Type, Dic0, Dic) -->
 	( { get_assoc(A, Dic0, _) } -> { Dic = Dic0 } % TODO: error?
-	; { put_assoc(A, Dic0, _, Dic) }, [decl(A,Type)], ! % TODO: add missing cuts in assoc.pl
+	; { put_assoc(A, Dic0, _, Dic) }, [decl(A,Type)]
 	).
 
 rw_cmds(Decls, Goal) -->
