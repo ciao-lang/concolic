@@ -208,7 +208,7 @@ melt(X,Y) :- empty_assoc(Dic0), melt1(X,Y,Dic0,_).
 
 melt1(X,Y,Dic0,Dic) :- X = '$VAR'(I), !,
 	( get_assoc(I, Dic0, Y0) -> Y = Y0, Dic = Dic0
-	; put_assoc(I, Dic0, Y, Dic)
+	; put_assoc(I, Dic0, Y, Dic), ! % TODO: add missing cuts in assoc.pl
 	).
 melt1(X,X,Dic,Dic) :- atomic(X), !.
 melt1(X,Y,Dic0,Dic) :- functor(X,F,N), functor(Y,F,N), meltargs(1,N,X,Y,Dic0,Dic).
