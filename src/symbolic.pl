@@ -25,6 +25,7 @@
    enhanced with external SMT solvers.").
 
 :- use_module(engine(attributes)).
+:- use_module(library(write)).
 
 % ---------------------------------------------------------------------------
 :- doc(section, "Flags").
@@ -243,6 +244,7 @@ scanlit(element(A,B,C), Dic0, Dic) --> !, decl(A,array64,Dic0,Dic1), scanexp(B,D
 scanlit(update(A,B,C,D), Dic0, Dic) --> !, decl(A,array64,Dic0,Dic1), scanexp(B,Dic1,Dic2), scanexp(C,Dic2,Dic3), decl(D,array64,Dic3,Dic).
 scanlit((A=B), Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
 scanlit((A\=B), Dic0, Dic) --> !, scanexp(A,Dic0,Dic1), scanexp(B,Dic1,Dic).
+scanlit(rngeqv(Ma,Mb, Min,Max), Dic, Dic) --> !.
 scanlit(X, _, _) --> { throw(unknown(X)) }.
 
 scanexp(A, Dic0, Dic) --> { var(A) }, !, decl(A, int64, Dic0, Dic).
@@ -466,7 +468,7 @@ has_smt :-
 	),
 	X = yes.
 
-% :- use_module(library(format)).
+:- use_module(library(format)).
 :- use_module(engine(stream_basic), [flush_output/1]).
 
 :- data z3_process/3.
@@ -520,7 +522,9 @@ smt_assert_(S, Goal0, RevDic) :-
 	rw_cmds(Decls, Goal, Cmds, []),
 	\+ \+ (
 	  unifnames(RevDic),
-	  wr_es(Cmds, S)).
+	  wr_es(Cmds, S)
+		% ,  wr_es(Cmds, user_output) % (verbose)
+	  ).
 
 % Ignore array constraints with constant atomic keys (registers)
 % TODO: really ad-hoc, improve
@@ -571,13 +575,23 @@ rw_decls([decl(X,Type)|Ds]) -->
 	rw_decls(Ds).
 
 rw_goal([]) --> [].
-rw_goal([X|Cs]) --> { Y = ~rw_g(X) }, [Y], rw_goal(Cs).
+rw_goal([X|Cs]) --> { Y = ~rw_g(X) }, [Y],  rw_goal(Cs).
 
 rw_g(A) := _ :- var(A) , !, throw(unknown_g(A)).
 rw_g(A=B) := sexp(['assert',~rw_sexp('=',[A,B])]) :- !.
 rw_g(A\=B) := sexp(['assert',sexp(['not',~rw_sexp('=',[A,B])])]) :- !.
 rw_g(element(A,B,C)) := sexp(['assert',sexp(['=',~rw_sexp('select',[A,B]), ~rw_e(C)])]) :- !.
 rw_g(update(A,B,C,D)) := sexp(['assert',sexp(['=',~rw_sexp('store',[A,B,C]), ~rw_e(D)])]) :- !.
+rw_g(rngeqv(M1,M2,MIN,MAX)) := sexp(['assert', 
+		sexp(['forall',
+			sexp(['i','Int64']),
+			sexp([
+				'implies',
+				sexp(['and', sexp(['>=', 'i', ~rw_e(MIN)]) ,  sexp(['<=', 'i', ~rw_e(MAX)])  ]),
+				sexp(['=',~rw_sexp('select',[M1,'i']), ~rw_sexp('select',[M2,'i'])])
+				])
+			])
+	]) :- !.
 rw_g(A) := _ :- !, throw(unknown_g(A)).
 
 rw_e(A) := R :- var(A), !, R = A. % (note: it should be renamed later)
@@ -632,6 +646,7 @@ rw_es([X|Xs]) := [~rw_e(X)| ~rw_es(Xs)].
 
 smt_send(solver(_,In,_), Cmds) :-
 	wr_es(Cmds, In),
+	% wr_es(Cmds, user_output), % (verbose)
 	flush_output(In).
 
 smt_recv(Solver, Answer) :-
