@@ -29,9 +29,7 @@
 
 :- export(wr_es/2).
 wr_es([], _S).
-wr_es([X|Xs], S) :- wr_e(X, S), nl(S),
-	wr_e(X, user_output), nl(user_output),  % (verbose) 
-	wr_es(Xs, S).
+wr_es([X|Xs], S) :- wr_e(X, S), nl(S), wr_es(Xs, S).
 
 wr_e(A, _) :- var(A), !, throw(error(unknown(A), wr_e/2)).
 wr_e(bitvecval(A,Size), S) :- !,
