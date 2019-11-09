@@ -161,12 +161,17 @@ digit16(X) --> [X], {X>=0'A, X=<0'F}.
 sym(X) --> [X], { sym_(X) }.
 
 sym_(0'_).
-sym_(0'-).
+sym_(0'@).
+sym_(0'%).
 sym_(0'.).
 sym_(0'!).
 sym_(0'>).
 sym_(0'=).
 sym_(0'<).
+sym_(0'+).
+sym_(0'-).
+sym_(0'*).
+sym_(0'/).
 
 alpha(X) --> [X], { X>=0'a, X=<0'z -> true ; X>=0'A,X=<0'Z -> true ; fail }. 
 
