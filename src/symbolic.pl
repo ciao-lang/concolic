@@ -106,7 +106,7 @@ mset(Dic,K,V) := Dic2 :-
 	attach_attribute(Tmp, m(Xs2)),
 	Dic2 = Tmp.
 
-mset_(Xs,K,V) := [K=V|Xs] :- var(Xs).
+mset_(Xs,K,V) := [K=V|Xs] :- var(Xs), !.
 mset_([K0=_|Xs],K,V) := [K=V|Xs] :- K0 == K, !.
 mset_([K0=V0|Xs],K,V) := [K0=V0| ~mset_(Xs,K,V)].
 
