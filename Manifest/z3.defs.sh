@@ -9,13 +9,13 @@ function pkg_bin_origin() {
     # (there are 32-bit versions too)
     local baseurl="https://github.com/Z3Prover/z3/releases/download/$pkg_name"
     case "$CIAO_OS" in
-	LINUX)
-	    pkg_tarfile="$pkg_name""-x64-ubuntu-14.04.zip" ;;
-	DARWIN)
-	    pkg_tarfile="$pkg_name""-x64-osx-10.11.6.zip" ;;
-	*)
-	    echo "ERROR: Unsupported CIAO_OS=$CIAO_OS" 1>&2
-	    exit 1
+        LINUX)
+            pkg_tarfile="$pkg_name""-x64-ubuntu-14.04.zip" ;;
+        DARWIN)
+            pkg_tarfile="$pkg_name""-x64-osx-10.11.6.zip" ;;
+        *)
+            echo "ERROR: Unsupported CIAO_OS=$CIAO_OS" 1>&2
+            exit 1
     esac
     pkg_url="$baseurl/$pkg_tarfile"
 }
@@ -55,12 +55,12 @@ pkg_lib=z3
 # NOTE: (no lib name with version)
 case "$CIAO_OS" in
     LINUX)
-	pkg_libfile="libz3.so"
-	pkg_libfileAct= #"libz3.so"
-	;;
+        pkg_libfile="libz3.so"
+        pkg_libfileAct= #"libz3.so"
+        ;;
     DARWIN)
-	pkg_libfile="libz3.dylib"
-	pkg_libfileAct= #"libz3.dylib"
-	;;
+        pkg_libfile="libz3.dylib"
+        pkg_libfileAct= #"libz3.dylib"
+        ;;
 esac
 

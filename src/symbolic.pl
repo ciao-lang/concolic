@@ -33,14 +33,14 @@
 
 :- export(set_solver_opt/2).
 set_solver_opt(Opt, Val) :-
-	retractall_fact(solver_opt(Opt, _)),
-	assertz_fact(solver_opt(Opt, Val)).
+    retractall_fact(solver_opt(Opt, _)),
+    assertz_fact(solver_opt(Opt, Val)).
 
 :- export(get_solver_opt/2).
 get_solver_opt(Opt, Val) :-
-	( solver_opt(Opt, Val0) -> Val = Val0
-	; fail
-	).
+    ( solver_opt(Opt, Val0) -> Val = Val0
+    ; fail
+    ).
 
 % ---------------------------------------------------------------------------
 :- doc(section, "Constraints").
@@ -76,35 +76,35 @@ get_solver_opt(Opt, Val) :-
 
 :- export(map_to_sym/2).
 map_to_sym(Xs, Dic) :-
-	map_to_sym_(Xs, Ys),
-	( get_attribute(Dic, m(Ys0)) -> Ys0 = Ys
-	; attach_attribute(Tmp, m(Ys)),
-	  Dic = Tmp
-	).
+    map_to_sym_(Xs, Ys),
+    ( get_attribute(Dic, m(Ys0)) -> Ys0 = Ys
+    ; attach_attribute(Tmp, m(Ys)),
+      Dic = Tmp
+    ).
 
 map_to_sym_([], _). % (open)
 map_to_sym_([K=V|Xs], [K=V|Dic]) :-
-	map_to_sym_(Xs, Dic).
+    map_to_sym_(Xs, Dic).
 
 :- export(sym_to_map/2).
 sym_to_map(Dic) := Xs :-
-	( get_attribute(Dic, m(Ys)) -> true
-	; attach_attribute(Dic, m(Ys)) % (fresh)
-	),
-	sym_to_map_(Ys, Xs).
+    ( get_attribute(Dic, m(Ys)) -> true
+    ; attach_attribute(Dic, m(Ys)) % (fresh)
+    ),
+    sym_to_map_(Ys, Xs).
 
 sym_to_map_(Dic, Xs) :- var(Dic), !, Xs = [].
 sym_to_map_([K=V|Xs0], [K=V|Xs]) :-
-	sym_to_map_(Xs0, Xs).
+    sym_to_map_(Xs0, Xs).
 
 % :- export(mset/4). % TODO: add constraints when K is symbolic
 mset(Dic,K,V) := Dic2 :-
-	( get_attribute(Dic, m(Xs)) -> true
-	; attach_attribute(Dic, m(Xs)) % (fresh)
-	),
-	Xs2 = ~mset_(Xs,~concretize(K),V),
-	attach_attribute(Tmp, m(Xs2)),
-	Dic2 = Tmp.
+    ( get_attribute(Dic, m(Xs)) -> true
+    ; attach_attribute(Dic, m(Xs)) % (fresh)
+    ),
+    Xs2 = ~mset_(Xs,~concretize(K),V),
+    attach_attribute(Tmp, m(Xs2)),
+    Dic2 = Tmp.
 
 mset_(Xs,K,V) := [K=V|Xs] :- var(Xs), !.
 mset_([K0=_|Xs],K,V) := [K=V|Xs] :- K0 == K, !.
@@ -112,9 +112,9 @@ mset_([K0=V0|Xs],K,V) := [K0=V0| ~mset_(Xs,K,V)].
 
 % :- export(mget/3). % TODO: add constraints when K is symbolic
 mget(Dic,K) := ~mget_(Xs,~concretize(K)) :-
-	( get_attribute(Dic, m(Xs)) -> true
-	; attach_attribute(Dic, m(Xs)) % (fresh)
-	).
+    ( get_attribute(Dic, m(Xs)) -> true
+    ; attach_attribute(Dic, m(Xs)) % (fresh)
+    ).
 
 mget_(Xs,K) := V :- var(Xs), !, Xs=[K=V|_].
 mget_([K0=V0|_],K) := V :- K0 == K, !, V = V0.
@@ -122,53 +122,53 @@ mget_([_|Xs],K) := ~mget_(Xs,K).
 
 :- export(update/4).
 update(Dic,K,V) := Dic2 :-
-	trace(sym(update(Dic,K,V,Dic2))),
-	Dic2 = ~mset(Dic,K,V).
+    trace(sym(update(Dic,K,V,Dic2))),
+    Dic2 = ~mset(Dic,K,V).
 
 :- export(element/3).
 element(M,N) := Tmp :-
-	trace(sym(element(M,N,Tmp))),
-	% We need a new variable to keep the trace symbolic
-	V = ~mget(M,N),
-	Vc = ~concretize(V),
-	Tmp = ~newsym(Vc).
+    trace(sym(element(M,N,Tmp))),
+    % We need a new variable to keep the trace symbolic
+    V = ~mget(M,N),
+    Vc = ~concretize(V),
+    Tmp = ~newsym(Vc).
 
 % Like update/4 but do not keep track of K % TODO: optimization, needed now?
 :- export(update0/4).
 update0(Dic,K,V) := Dic2 :-
-	trace(sym(update0(Dic,Dic2))),
-	Dic2 = ~mset(Dic,K,V).
+    trace(sym(update0(Dic,Dic2))),
+    Dic2 = ~mset(Dic,K,V).
 
 % Like element/3 but do not keep track of K % TODO: optimization, needed now?
 :- export(element0/3).
 element0(M,N) := V :-
-	V = ~mget(M,N).
+    V = ~mget(M,N).
 
 % Like element/3 but do not create a temp % TODO: optimization, needed now?
 :- export(elementF/3).
 elementF(M,N) := V :-
-	trace(sym(element(M,N,V))),
-	V = ~mget(M,N).
+    trace(sym(element(M,N,V))),
+    V = ~mget(M,N).
 
 % Xc is the concrete value for X,
 % X is preserved as a symbol using attributed variables
 ensure(_Ty, X, Xc) :-
-	integer(X), !, X = Xc.
+    integer(X), !, X = Xc.
 ensure(_Ty, X, Xc) :-
-	( get_attribute(X, v(Xc0)) -> true
-	; attach_attribute(X, v(Xc0))
-	),
-	Xc = Xc0,
-	( integer(Xc) -> true ; ensure_(int64, Xc) ).
+    ( get_attribute(X, v(Xc0)) -> true
+    ; attach_attribute(X, v(Xc0))
+    ),
+    Xc = Xc0,
+    ( integer(Xc) -> true ; ensure_(int64, Xc) ).
 
 % Pick any random value
 ensure_(int64, Xc) :- !, Xc = 0.
 
 % Y is a new symbolic variable with value V
 newsym(V) := Y :-
-	T = _,
-	attach_attribute(T, v(V)),
-	Y = T.
+    T = _,
+    attach_attribute(T, v(V)),
+    Y = T.
 
 % Expression is symbolic if it is not a number
 is_sym(Xa) :- \+ integer(Xa).
@@ -178,12 +178,12 @@ is_sym(Xa) :- \+ integer(Xa).
 % keeps track of the symbolic relation. If X is a concrete value, Tmp
 % is unified with it without any symbolic constraint.
 symtmp(X) := Y :- is_sym(X), !,
-	V = ~concretize(X),
-	Y = ~newsym(V), % TODO: delay assignment
-	trace(sym(Y=X)).
+    V = ~concretize(X),
+    Y = ~newsym(V), % TODO: delay assignment
+    trace(sym(Y=X)).
 symtmp(X) := Y :-
-	V = ~concretize(X),
-	Y = V.
+    V = ~concretize(X),
+    Y = V.
 
 :- export(negcond/2).
 negcond(X=Y) := (X\=Y).
@@ -205,8 +205,8 @@ concretize(X*Y) := R :- !, R0 is ~concretize(X) * ~concretize(Y), R = ~to_bv(64,
 concretize(X<<Y) := R :- !, Xr = ~concretize(X), Yr = ~concretize(Y), ( Yr > 64 -> R = 0 ; R0 is Xr << Yr, R = ~to_bv(64, R0) ).
 concretize(X>>Y) := R :- !, R is ~concretize(X) >> ~concretize(Y).
 concretize(ashr(X,Y)) := R :- !, % Like >> but it sets all upper bits to 1 using (-1)<<64 if needed
-	R0 is ~signext(64, ~concretize(X)) >> ~concretize(Y),
-	R = ~to_bv(64, R0).
+    R0 is ~signext(64, ~concretize(X)) >> ~concretize(Y),
+    R = ~to_bv(64, R0).
 concretize(X/\Y) := R :- !, R is ~concretize(X) /\ ~concretize(Y).
 concretize(X\/Y) := R :- !, R is ~concretize(X) \/ ~concretize(Y).
 concretize(X#Y) := R :- !, R is ~concretize(X) # ~concretize(Y).
@@ -230,11 +230,11 @@ to_bv(Size,N) := R :- R is ((1<<Size)-1)/\N.
 
 % Extend sign bit from Size-bit to unbound arithmetic
 signext(Size,N) := R :-
-	( 0 =:= N /\ (1<<(Size-1)) -> % sign bit is unset
-	    R = N
-	; SignBits is ((-1)<<Size),
-	  R is (N \/ SignBits)
-	).
+    ( 0 =:= N /\ (1<<(Size-1)) -> % sign bit is unset
+        R = N
+    ; SignBits is ((-1)<<Size),
+      R is (N \/ SignBits)
+    ).
 
 % Unsigned sign bit from Size-bit to unbound arithmetic
 unsigned(_,N) := N. % TODO: nothing if the default representation uses to_bv/3
@@ -279,63 +279,63 @@ scanexp(_A, Dic, Dic) --> [].
 :- use_module(engine(internals), ['$global_vars_get'/2, '$global_vars_set'/2]). % (reserve 16)
 
 get_trace(X) :-
-	'$global_vars_get'(16,V0),
-	( V0=0 -> % (uninitialized)
-	    X=[] % (just some default value)
-	; V0=tr(X)
-	).
+    '$global_vars_get'(16,V0),
+    ( V0=0 -> % (uninitialized)
+        X=[] % (just some default value)
+    ; V0=tr(X)
+    ).
 
 set_trace(X) :-
-	'$global_vars_set'(16,tr(X)).
+    '$global_vars_set'(16,tr(X)).
 
 :- export(with_trace/2).
 :- meta_predicate with_trace(?,goal).
 with_trace(Trace, Goal) :-
-	get_trace(OldTrace),
-	set_trace(Trace), % new fresh trace
-	Goal,
-	get_trace([]), % close trace
-	set_trace(OldTrace).
+    get_trace(OldTrace),
+    set_trace(Trace), % new fresh trace
+    Goal,
+    get_trace([]), % close trace
+    set_trace(OldTrace).
 
 :- export(drop_trace/1).
 :- meta_predicate drop_trace(goal).
 drop_trace(Goal) :-
-	get_trace(OldTrace),
-	set_trace(_),
-	Goal,
-	set_trace(OldTrace).
+    get_trace(OldTrace),
+    set_trace(_),
+    Goal,
+    set_trace(OldTrace).
 
 :- export(trace/1).
 % Add X to the trace
 trace(X) :-
-	get_trace([X|Trace]), set_trace(Trace).
+    get_trace([X|Trace]), set_trace(Trace).
 
 % ---------------------------------------------------------------------------
 :- doc(section, "Solver").
 
 :- export(get_model/2).
 get_model(Goal, Status) :-
-	prop_array(Goal),
-	smt_get_solver(Solver),
-	smt_begin(Solver),
-	smt_assert(Solver, Goal, RevDic),
-	smt_check_sat(Solver, Result),
-	( sat_result(Result) -> true
-	; throw(error(bad_status(Result), get_model/2))
-	),
-	Status = Result,
-	( Status = sat ->
-	    smt_get_model(Solver, RevDic),
-	    %% \+ \+ ( numbervars(Model,0,_), format("Goal: ~q~nRevDic: ~q~n", [Goal, RevDic]) ) % (verbose)
-	    smt_end(Solver),
-	    % TODO: (it may not be needed if we get the arrays directly from SMT)
-	    ( assign_arr(Goal) ->
-	        true
-	    ; % Note: this should not happen
-	      throw(error(could_not_reconstruct_model, get_model/1))
-	    )
-	; true
-	).
+    prop_array(Goal),
+    smt_get_solver(Solver),
+    smt_begin(Solver),
+    smt_assert(Solver, Goal, RevDic),
+    smt_check_sat(Solver, Result),
+    ( sat_result(Result) -> true
+    ; throw(error(bad_status(Result), get_model/2))
+    ),
+    Status = Result,
+    ( Status = sat ->
+        smt_get_model(Solver, RevDic),
+        %% \+ \+ ( numbervars(Model,0,_), format("Goal: ~q~nRevDic: ~q~n", [Goal, RevDic]) ) % (verbose)
+        smt_end(Solver),
+        % TODO: (it may not be needed if we get the arrays directly from SMT)
+        ( assign_arr(Goal) ->
+            true
+        ; % Note: this should not happen
+          throw(error(could_not_reconstruct_model, get_model/1))
+        )
+    ; true
+    ).
 
 sat_result(sat).
 sat_result(unsat).
@@ -343,32 +343,32 @@ sat_result(unknown).
 
 :- export(get_model/1).
 get_model(Goal) :-
-	get_model(Goal, Status),
-	( Status = unsat -> fail
-	; Status = unknown -> throw(error(unknown, get_model/1)) % TODO: what should we do?
-	; Status = sat -> true
-	).
+    get_model(Goal, Status),
+    ( Status = unsat -> fail
+    ; Status = unknown -> throw(error(unknown, get_model/1)) % TODO: what should we do?
+    ; Status = sat -> true
+    ).
 
 % TODO: Very incomplete... implement real propagation or use a SMT
 % propagate some array constraints for registers
 % TODO: use something better than assoc (attr?)
 prop_array(Goal) :-
-	empty_assoc(Dic0),
-	prop_array_(Goal, Dic0).
+    empty_assoc(Dic0),
+    prop_array_(Goal, Dic0).
 
 prop_array_([], _).
 prop_array_([element(A,K,V)|Cs], Dic0) :- atom(K), var(V), !,
-	( get_assoc((A,K), Dic0, V0) -> V = V0, Dic1 = Dic0
-	; put_assoc((A,K), Dic0, V, Dic1)
-	),
-	prop_array_(Cs, Dic1).
+    ( get_assoc((A,K), Dic0, V0) -> V = V0, Dic1 = Dic0
+    ; put_assoc((A,K), Dic0, V, Dic1)
+    ),
+    prop_array_(Cs, Dic1).
 prop_array_([_|Cs], Dic) :-
-	prop_array_(Cs, Dic).
+    prop_array_(Cs, Dic).
 
 assign_arr([]).
 assign_arr([C|Cs]) :- !,
-	( assign1(C) -> true ; true ), % TODO: may fail due to bitvec vs int!
-	assign_arr(Cs).
+    ( assign1(C) -> true ; true ), % TODO: may fail due to bitvec vs int!
+    assign_arr(Cs).
 
 assign1(element(M,I,V)) :- !, V0 = ~mget(M,I), ( type(V0,var) -> V=V0 ; true ). % TODO: ugly
 assign1(update(M0,I,V,M)) :- !, M = ~mset(M0,I,V).
@@ -383,13 +383,13 @@ assign1(_).
 % Remove constraints and obtain its goal representation
 % TODO: make it general
 erase_and_dump_constrs(X, Goal) :- nonvar(X), X = c(M,A), !,
-	M1 = ~sym_to_map(M),
-	A1 = ~sym_to_map(A),
-	erase_model(c(M,A)),
-	init_mem(M1,M,Goal,Goal0),
-	init_mem(A1,A,Goal0,[]).
+    M1 = ~sym_to_map(M),
+    A1 = ~sym_to_map(A),
+    erase_model(c(M,A)),
+    init_mem(M1,M,Goal,Goal0),
+    init_mem(A1,A,Goal0,[]).
 erase_and_dump_constrs(X, []) :- % TODO: incomplete if X contains arrays
-	erase_model(X).
+    erase_model(X).
 
 init_mem([],_) --> [].
 init_mem([K=V|D],Arr) --> [element(Arr,K,V)], init_mem(D,Arr).
@@ -397,23 +397,23 @@ init_mem([K=V|D],Arr) --> [element(Arr,K,V)], init_mem(D,Arr).
 :- export(erase_model/1).
 % Drop any concrete assignment to symbolic variables on Term
 erase_model(Term) :-
-	varset(Term, Vars),
-	unassign(Vars, _Map).
+    varset(Term, Vars),
+    unassign(Vars, _Map).
 
 :- export(unassign/2).
 % Unassign concrete values assigned to symbolic variables
 % Obtain the assignment in the Map argument.
 unassign([], []).
 unassign([X|Xs], Map) :-
-	( type(X,attv), get_attribute(X, v(V)) ->
-	    detach_attribute(X),
-	    Map = [X=V|Map0]
-	; type(X,attv), get_attribute(X, m(_)) ->
-	    detach_attribute(X),
-	    Map = Map0
-	; Map = Map0
-	),
-	unassign(Xs, Map0).
+    ( type(X,attv), get_attribute(X, v(V)) ->
+        detach_attribute(X),
+        Map = [X=V|Map0]
+    ; type(X,attv), get_attribute(X, m(_)) ->
+        detach_attribute(X),
+        Map = Map0
+    ; Map = Map0
+    ),
+    unassign(Xs, Map0).
 
 % ---------------------------------------------------------------------------
 % SMT interface (via SMTLIB format)
@@ -435,36 +435,36 @@ unassign([X|Xs], Map) :-
 
 % TODO: use Ciao builder 3rd party support
 find_bin(Cmd, Path) :-
-	% relative to the current executable
-	current_executable(ExecPath),
-	path_split(ExecPath, Dir, _),
-	( Path0 = ~path_concat(Dir, Cmd)
-	; Path0 = ~path_concat(~path_concat(Dir, 'third-party/bin'), Cmd)
-	; Path0 = ~path_concat(~path_concat(~ciao_root, 'third-party/bin'), Cmd)
-	),
-	file_exists(Path0),
-	!,
-	Path = Path0.
+    % relative to the current executable
+    current_executable(ExecPath),
+    path_split(ExecPath, Dir, _),
+    ( Path0 = ~path_concat(Dir, Cmd)
+    ; Path0 = ~path_concat(~path_concat(Dir, 'third-party/bin'), Cmd)
+    ; Path0 = ~path_concat(~path_concat(~ciao_root, 'third-party/bin'), Cmd)
+    ),
+    file_exists(Path0),
+    !,
+    Path = Path0.
 find_bin(Cmd, Path) :- % in the PATH
-	find_executable(Cmd, Path).
+    find_executable(Cmd, Path).
 
 :- data z3_bin_/1.
 z3_bin := Path :-
-	( z3_bin_(Path0) -> true
-	; find_bin('z3', Path0), set_fact(z3_bin_(Path0))
-	),
-	Path = Path0.
+    ( z3_bin_(Path0) -> true
+    ; find_bin('z3', Path0), set_fact(z3_bin_(Path0))
+    ),
+    Path = Path0.
 
 :- data has_smt_/1.
 has_smt :- 
-	( has_smt_(X) -> true
-	; ( file_exists(~z3_bin) -> X = yes
-	  ; X = no,
-	    message(warning, ['could not detect any external SMT solver'])
-	  ),
-	  assertz_fact(has_smt_(X))
-	),
-	X = yes.
+    ( has_smt_(X) -> true
+    ; ( file_exists(~z3_bin) -> X = yes
+      ; X = no,
+        message(warning, ['could not detect any external SMT solver'])
+      ),
+      assertz_fact(has_smt_(X))
+    ),
+    X = yes.
 
 % :- use_module(library(format)).
 :- use_module(engine(stream_basic), [flush_output/1]).
@@ -472,78 +472,78 @@ has_smt :-
 :- data z3_process/3.
 
 smt_get_solver(Solver) :-
-	Solver = solver(PSolver, In, Out),
-	( z3_process(PSolver, In, Out) ->
-	    true
-	; has_smt ->
-	    process_call(~z3_bin, ['-in'|~solver_args],
-	      [stdin(stream(In)), stdout(stream(Out)), status(_), background(PSolver)]),
-	    % message(error, ['starting z3']),
-	    assertz_fact(z3_process(PSolver, In, Out))
-	; throw(error(no_solver, smt_get_solver/1))
-	).
+    Solver = solver(PSolver, In, Out),
+    ( z3_process(PSolver, In, Out) ->
+        true
+    ; has_smt ->
+        process_call(~z3_bin, ['-in'|~solver_args],
+          [stdin(stream(In)), stdout(stream(Out)), status(_), background(PSolver)]),
+        % message(error, ['starting z3']),
+        assertz_fact(z3_process(PSolver, In, Out))
+    ; throw(error(no_solver, smt_get_solver/1))
+    ).
 
 % TODO: document 'hard_timeout' (currently unused)
 solver_args(Args) :-
-	( get_solver_opt(hard_timeout, HardTO) ->
-	    HardTOsec is ceiling(HardTO/1000.0), % seconds from ms, no float is allowed
-	    atom_codes(OptTO, "-T:"||(~number_codes(HardTOsec))),
-	    Args = [OptTO]
-	; Args = []
-	).
+    ( get_solver_opt(hard_timeout, HardTO) ->
+        HardTOsec is ceiling(HardTO/1000.0), % seconds from ms, no float is allowed
+        atom_codes(OptTO, "-T:"||(~number_codes(HardTOsec))),
+        Args = [OptTO]
+    ; Args = []
+    ).
 
 smt_close :-
-	z3_process(PSolver, In, Out), !,
-	close(In),
-	close(Out),
-	process_join(PSolver),
-	retractall_fact(z3_process(_,_,_)).
+    z3_process(PSolver, In, Out), !,
+    close(In),
+    close(Out),
+    process_join(PSolver),
+    retractall_fact(z3_process(_,_,_)).
 smt_close.
 
 % ---------------------------------------------------------------------------
 
 smt_assert(Solver, Goal, RevDic) :-
-	Solver = solver(_PSolver, In, _Out),
-%	( \+ \+ tell_cmds(user_output, Goal, _) -> true ; true ), % (verbose)
-	smt_assert_(In, Goal, RevDic),
-	flush_output(In).
+    Solver = solver(_PSolver, In, _Out),
+%       ( \+ \+ tell_cmds(user_output, Goal, _) -> true ; true ), % (verbose)
+    smt_assert_(In, Goal, RevDic),
+    flush_output(In).
 
 % Rewrite goal and tell SMT commands (declarations, assert, check sat, get model, etc.)
 smt_assert_(S, Goal0, RevDic) :-
-	Goal = ~filter_noreg(Goal0),
-	empty_assoc(Dic0),
-	( scangoal(Goal, Dic0, _Dic, Decls, []) -> true
-	; throw(scangoal_failed(Goal))
-	),
-	empty_assoc(RevDic0),
-	namedecls(Decls, 0, RevDic0, RevDic),
-	rw_cmds(Decls, Goal, Cmds, []),
-	\+ \+ (
-	  unifnames(RevDic),
-	  wr_es(Cmds, S)).
+    Goal = ~filter_noreg(Goal0),
+    empty_assoc(Dic0),
+    ( scangoal(Goal, Dic0, _Dic, Decls, []) -> true
+    ; throw(scangoal_failed(Goal))
+    ),
+    empty_assoc(RevDic0),
+    namedecls(Decls, 0, RevDic0, RevDic),
+    rw_cmds(Decls, Goal, Cmds, []),
+    \+ \+ (
+      unifnames(RevDic),
+      wr_es(Cmds, S)).
 
 % Ignore array constraints with constant atomic keys (registers)
 % TODO: really ad-hoc, improve
 filter_noreg([]) := [].
 filter_noreg([X|Xs]) := ~filter_noreg(Xs) :-
-	( X = element(_,K,_), atom(K) % a register
-	; X = update(_,K,_,_), atom(K) % a register
-	; X = update0(_,_)
-	),
-	!.
+    ( X = element(_,K,_), atom(K) % a register
+    ; X = update(_,K,_,_), atom(K) % a register
+    ; X = update0(_,_)
+    ),
+    !.
 filter_noreg([X|Xs]) := [X| ~filter_noreg(Xs)].
 
 % give names to declared variables (assume no repetitions)
 namedecls([], _, Dic, Dic).
 namedecls([decl(X,_)|Cs], Idx, Dic0, Dic) :-
-	Idx1 is Idx + 1,
-	put_assoc(Idx, Dic0, X, Dic1),
-	namedecls(Cs, Idx1, Dic1, Dic).
+    Idx1 is Idx + 1,
+    put_assoc(Idx, Dic0, X, Dic1),
+    namedecls(Cs, Idx1, Dic1, Dic).
 
 % unify vars with its name
 unifnames(Dic) :-
-	assoc_to_list(Dic, KVs),
-	unifnames_(KVs).
+    assoc_to_list(Dic, KVs),
+    unifnames_(KVs).
 
 unifnames_([]).
 unifnames_([Idx-vr(Idx)|KVs]) :- unifnames_(KVs).
@@ -552,23 +552,23 @@ scangoal([], Dic, Dic) --> [].
 scangoal([C|Cs], Dic0, Dic) --> scanlit(C, Dic0, Dic1), scangoal(Cs, Dic1, Dic).
 
 decl(A, Type, Dic0, Dic) -->
-	( { get_assoc(A, Dic0, _) } -> { Dic = Dic0 } % TODO: error?
-	; { put_assoc(A, Dic0, _, Dic) }, [decl(A,Type)]
-	).
+    ( { get_assoc(A, Dic0, _) } -> { Dic = Dic0 } % TODO: error?
+    ; { put_assoc(A, Dic0, _, Dic) }, [decl(A,Type)]
+    ).
 
 rw_cmds(Decls, Goal) -->
-	rw_decls(Decls),
-	rw_goal(Goal).
+    rw_decls(Decls),
+    rw_goal(Goal).
 
 rw_decls([]) --> [].
 rw_decls([decl(X,Type)|Ds]) -->
-	( { Type = int64 } ->
-	    [sexp(['declare-fun',~rw_e(X),sexp([]),'Int64'])]
-	; { Type = array64 } ->
-	    [sexp(['declare-fun',~rw_e(X),sexp([]),'Array64'])]
-	; { fail }
-	),
-	rw_decls(Ds).
+    ( { Type = int64 } ->
+        [sexp(['declare-fun',~rw_e(X),sexp([]),'Int64'])]
+    ; { Type = array64 } ->
+        [sexp(['declare-fun',~rw_e(X),sexp([]),'Array64'])]
+    ; { fail }
+    ),
+    rw_decls(Ds).
 
 rw_goal([]) --> [].
 rw_goal([X|Cs]) --> { Y = ~rw_g(X) }, [Y], rw_goal(Cs).
@@ -631,35 +631,35 @@ rw_es([X|Xs]) := [~rw_e(X)| ~rw_es(Xs)].
 % Send/receive S-exp to/from the solver
 
 smt_send(solver(_,In,_), Cmds) :-
-	wr_es(Cmds, In),
-	flush_output(In).
+    wr_es(Cmds, In),
+    flush_output(In).
 
 smt_recv(Solver, Answer) :-
-	Solver = solver(_PSolver, _In, Out),
-	%% format("SMT output: ~s~n", [Out]), % (verbose)
-	rd_answer(Out, Answer).
+    Solver = solver(_PSolver, _In, Out),
+    %% format("SMT output: ~s~n", [Out]), % (verbose)
+    rd_answer(Out, Answer).
 
 rd_answer(S, X) :-
-	( rd_e(S, X0) -> true
-	; throw(error(parse, smt_recv/2))
-	),
-	( X0 = sexp(['error', string(_Str)]) ->
-%	    message(warning, ['[smt] ', $$(Str)]),
-	    rd_answer(S, X)
-	; X = X0
-%	  message(error, ['rda: ', X])
-	).
+    ( rd_e(S, X0) -> true
+    ; throw(error(parse, smt_recv/2))
+    ),
+    ( X0 = sexp(['error', string(_Str)]) ->
+%           message(warning, ['[smt] ', $$(Str)]),
+        rd_answer(S, X)
+    ; X = X0
+%         message(error, ['rda: ', X])
+    ).
 
 % ---------------------------------------------------------------------------
 
 smt_begin(Solver) :-
-	rw_begin(Cmds, []),
-	smt_send(Solver, Cmds).
+    rw_begin(Cmds, []),
+    smt_send(Solver, Cmds).
 
 rw_begin -->
-	[sexp(['reset'])],
-	[sexp(['define-sort', 'Int64', sexp([]), sexp(['_', 'BitVec', '64'])])],
-	[sexp(['define-sort', 'Array64', sexp([]), sexp(['Array', 'Int64', 'Int64'])])].
+    [sexp(['reset'])],
+    [sexp(['define-sort', 'Int64', sexp([]), sexp(['_', 'BitVec', '64'])])],
+    [sexp(['define-sort', 'Array64', sexp([]), sexp(['Array', 'Int64', 'Int64'])])].
 
 % ---------------------------------------------------------------------------
 
@@ -674,38 +674,38 @@ smt_end(Solver) :- smt_send(Solver, [sexp(['exit'])]), smt_close.
 % ---------------------------------------------------------------------------
 
 smt_check_sat(Solver, Result) :-
-	( get_solver_opt(timeout, TO) ->
-	    % (value 0 is treated as no timeout)
-	    smt_send(Solver, [sexp(['set-option', ':timeout', TO])])
-	; true
-	),
-	smt_send(Solver, [sexp(['check-sat'])]),
-	smt_recv(Solver, Result0),
-	( Result0 = unsat -> Result = unsat
-	; Result0 = sat -> Result = sat
-	; Result0 = unknown -> Result = unknown
-	; throw(error(unknown_answer(Result0), smt_check_sat/2))
-	).
+    ( get_solver_opt(timeout, TO) ->
+        % (value 0 is treated as no timeout)
+        smt_send(Solver, [sexp(['set-option', ':timeout', TO])])
+    ; true
+    ),
+    smt_send(Solver, [sexp(['check-sat'])]),
+    smt_recv(Solver, Result0),
+    ( Result0 = unsat -> Result = unsat
+    ; Result0 = sat -> Result = sat
+    ; Result0 = unknown -> Result = unknown
+    ; throw(error(unknown_answer(Result0), smt_check_sat/2))
+    ).
 
 % ---------------------------------------------------------------------------
 
 smt_get_model(Solver, RevDic) :-
-	smt_send(Solver, [sexp(['get-model'])]),
-	smt_recv(Solver, Answer),
-	( Answer = sexp([model|Model0]) ->
-	    Model = ~dump_model(Model0, RevDic)
-	; throw(error(unknown_answer(Answer), smt_get_model/2))
-	),
-	assign_model(Model).
+    smt_send(Solver, [sexp(['get-model'])]),
+    smt_recv(Solver, Answer),
+    ( Answer = sexp([model|Model0]) ->
+        Model = ~dump_model(Model0, RevDic)
+    ; throw(error(unknown_answer(Answer), smt_get_model/2))
+    ),
+    assign_model(Model).
 
 assign_model([X=V|Cs]) :- integer(V), !, X = ~newsym(V), assign_model(Cs).
 assign_model([]).
 
 dump_model([sexp(['define-fun', vr(Idx), sexp([]), sexp(['_','BitVec',_]), bitvecval(V,_)])|Xs], RevDic, [X=V|Cs]) :-
-	get_assoc(Idx, RevDic, X),
-	!,
-	dump_model(Xs, RevDic, Cs).
+    get_assoc(Idx, RevDic, X),
+    !,
+    dump_model(Xs, RevDic, Cs).
 dump_model([_|Xs], RevDic, Cs) :- !,
-	dump_model(Xs, RevDic, Cs).
+    dump_model(Xs, RevDic, Cs).
 dump_model([], _, []).
 
