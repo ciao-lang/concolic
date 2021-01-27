@@ -29,10 +29,13 @@
 
 :- export(wr_es/2).
 wr_es([], _S).
-wr_es([X|Xs], S) :- wr_e(X, S), nl(S), wr_es(Xs, S).
+wr_es([X|Xs], S) :-
+    % wr_e(X, user_error), nl(user_error), % TODO: enable for debugging
+    wr_e(X, S), nl(S),
+    wr_es(Xs, S).
 
 wr_e(A, _) :- var(A), !, throw(error(unknown(A), wr_e/2)).
-wr_e(bitvecval(A,Size), S) :- !,
+wr_e(bitvecval(A,Size), S) :- integer(Size), !,
     ( A >= 0 -> A2 = A
     ; A < 0 -> A2 is (1<<Size)+A % TODO: better way?
     ),
@@ -119,8 +122,12 @@ ps_str([0'\"|Cs]) --> "\\\"", !, ps_str(Cs).
 ps_str([C|Cs]) --> [C], !, ps_str(Cs).
 
 econs("#x"||Cs) := bitvecval(N, Size) :- !,
-    length(Cs, Size),
+    length(Cs, SizeC),
+    Size is SizeC*4, % 4 bits per character
     number_codes(N, 16, Cs).
+econs("#b"||Cs) := bitvecval(N, Size) :- !,
+    length(Cs, Size), % 1 bit per character
+    number_codes(N, 2, Cs).
 econs("v!"||Cs) := vr(Idx) :- !, % (internal)
     number_codes(Idx, Cs).
 econs(Cs) := R :-
@@ -131,6 +138,7 @@ empty([],[]).
 ignore_rest(_, []).
 
 numcodes("#x"||Cs) --> "#x", !, numcodes16(Cs).
+numcodes("#b"||Cs) --> "#b", !, numcodes2(Cs).
 numcodes([X|Cs]) --> digit(X), !, numcodes_(Cs).
 
 numcodes_([X|Cs]) --> digit(X), !, numcodes_(Cs).
@@ -138,6 +146,9 @@ numcodes_("") --> "".
 
 numcodes16([X|Cs]) --> digit16(X), !, numcodes16(Cs).
 numcodes16("") --> "".
+
+numcodes2([X|Cs]) --> digit2(X), !, numcodes2(Cs).
+numcodes2("") --> "".
 
 idcodes([X|Cs]) --> sym(X), !, idcodes_(Cs).
 idcodes([X|Cs]) --> alpha(X), !, idcodes_(Cs).
@@ -157,6 +168,8 @@ digit(X) --> [X], {X>=0'0, X=<0'9}.
 digit16(X) --> [X], {X>=0'0, X=<0'9}, !.
 digit16(X) --> [X], {X>=0'a, X=<0'f}, !.
 digit16(X) --> [X], {X>=0'A, X=<0'F}.
+
+digit2(X) --> [X], {X>=0'0, X=<0'1}, !.
 
 sym(X) --> [X], { sym_(X) }.
 

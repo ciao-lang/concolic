@@ -15,14 +15,20 @@
 
 :- module(_, [], [assertions, fsyntax, datafacts, dcg, hiord]).
 
-:- doc(title, "Concolic search").
+%! \title Concolic search
+%
+%  \module This module implements a (more or less) generic concolic
+%  search algorithm. See @pred{conc_call/3} for details.
+%
+%  It is based on implicit symbolic traces. Symbolic traces are
+%  conjunctions of constraints (for some theories) where variables
+%  denoting different array states are implicit. Satisfiability check
+%  and model extraction is based on the @lib{ciaosmt} module.
 
+:- use_module(library(terms_vars)).
 :- use_module(library(lists)).
-:- use_module(concolic(symbolic)).
+:- use_module(concolic(ciaosmt)).
 :- use_module(engine(runtime_control), [statistics/2]).
-
-:- doc(module, "This module implements a (more or less) generic
-   concolic search algorithm. See @pred{conc_call/3} for details.").
 
 :- export(conc_call/3).
 % Call goal Goal using a concolic search algorithm. It will provide
@@ -34,7 +40,7 @@ conc_call(Goal, InConf, Trace) :-
     ( % Initial input
       first_input(InConf, NegMarks)
     ; % Compute next input (nondet until no more inputs can be generated)
-      erase_and_dump_constrs(InConf, InGoal),
+      erase_constraints(InConf, InGoal, _),
       repeat,
       ( next_input(InConf, InGoal, NegMarks) -> true
       ; % No more solutions (cut repeat/0 and fail)
@@ -49,17 +55,98 @@ conc_call(Goal, InConf, Trace) :-
 % Just do nothing (it assumes that execution does "lazy concretization").
 first_input(_InConf, []).
 
+% ---------------------------------------------------------------------------
+%! # Derivation trace (both symbolic constraints and custom items)
+%
+% Use `with_trace/2` to execute a predicate with some local trace and
+% `add_trace/1` to concatenate elements to that trace.
+
+:- use_module(engine(internals), ['$global_vars_get'/2, '$global_vars_set'/2]). % (reserve 16)
+
+get_trace(X) :-
+    '$global_vars_get'(16,V0),
+    ( V0=0 -> % (uninitialized)
+        X=[] % (just some default value)
+    ; V0=tr(X)
+    ).
+
+set_trace(X) :-
+    '$global_vars_set'(16,tr(X)).
+
+:- export(with_trace/2).
+:- meta_predicate with_trace(?,goal).
+with_trace(Trace, Goal) :-
+    get_trace(OldTrace),
+    set_trace(Trace), % new fresh trace
+    Goal,
+    get_trace([]), % close trace
+    set_trace(OldTrace).
+
+:- export(drop_trace/1).
+:- meta_predicate drop_trace(goal).
+drop_trace(Goal) :-
+    get_trace(OldTrace),
+    set_trace(_),
+    Goal,
+    set_trace(OldTrace).
+
+:- export(trace/1).
+% Add X to the trace
+trace(X) :-
+    get_trace([X|Trace]), set_trace(Trace).
+
+% ---------------------------------------------------------------------------
+%! # Trace-based constraints
+
 :- export(conc_cond/2).
-% Choose a condition on a symbolic constraint. V is 1 if it was true or
-% 0 if it was false for the current values. The constraint is added to
+% Choose a condition on a symbolic constraint. V is 'true' if it was true or
+% 'false' if it was false for the current values. The constraint is added to
 % the symbolic trace to allow the exploration of other paths.
-conc_cond(C) := CondV :- C=(A=B), !,
-    Ac = ~concretize(A),
-    Bc = ~concretize(B),
-    ( Ac = Bc -> Cond = C, CondV=1
-    ; Cond = ~negcond(C), CondV=0
+conc_cond(C) := CondV :-
+    concretize(C),
+    CondV0 = ~eval(C), % TODO: use true/false instead of 1/0?
+    ( CondV0 = 1 -> Cond = C, CondV = true
+    ; Cond = ~negbool(C), CondV = false
     ),
     trace(sym(cond(Cond))).
+
+:- export(update/4).
+% update(Dic,K,V,Dic2): (requires concretized K)
+update(Dic,K,V) := Dic2 :-
+    concretize(K),
+    trace(sym(update(Dic,K,V,Dic2))),
+    Dic2 = ~eval(store(Dic,K,V)).
+
+:- export(element/3).
+% element(Dic,K,V): (requires concretized K)
+element(Dic,K) := V :-
+    concretize(K),
+    trace(sym(element(Dic,K,V))),
+    V = ~eval(select(Dic,K)).
+
+:- export(assign/2).
+% Evaluate X and assign its value to a fresh variable To, keeping track of the
+% symbolic relation.
+% (requires concretized X)
+assign(To, X) :-
+    concretize(X),
+    trace(sym(To=X)),
+    assign_eval(To, X).
+
+:- export(concretize/1).
+% Assign default values for all unassigned variables in X expression.
+% All variable must have been declared. This ensures that eval/2
+% has enough concrete information to evaluate an expression.
+concretize(X) :-
+    varset(X, Vars),
+    concretize_(Vars).
+
+concretize_([]).
+concretize_([X|Xs]) :-
+    assign_default(X),
+    concretize_(Xs).
+
+% ---------------------------------------------------------------------------
 
 :- export(conc_stats/3).
 % Collect statistics for concolic runs (erased for each new solution)
@@ -80,8 +167,7 @@ set_nextpath_timeout(T) :-
 % ---------------------------------------------------------------------------
 % NOTE: numbervars/3 and melt/2 are a workaround for a limit in the
 %   number of free variables in dynamic predicates, and assert items
-%   individually. erase_model/1 is needed in any case.
-%   
+%   individually. erase_constraints/3 is needed in any case.
 
 :- use_module(library(write), [numbervars/3]).
 
@@ -92,23 +178,25 @@ reset_saved_sympath :-
 %   retractall_fact(saved_sympath(_)).
     retractall_fact(savedpath(_,_)).
 
-retract_saved_sympath(Xs) :-
+retract_saved_sympath(InConf,SymPath,NegMarks) :-
 %   retract_fact(saved_sympath(Xs0)), % TODO: a single term reach other db limits
     retract_fact(savedpath(inconf, InConf0)),
     retract_saved_sympath_lst(sympath, SymPath0),
     retract_saved_sympath_lst(negmarks, NegMarks0),
     Xs0 = (InConf0,SymPath0,NegMarks0),
-    melt(Xs0, Xs).
+    melt(Xs0, Xs),
+    Xs = (InConf,SymPath,NegMarks).
 
-asserta_saved_sympath(Xs) :-
+% Save the symbolic path (without any model assignment)
+save_sympath(InConf, SymPath, NegMarks) :-
     \+ \+ (
-      erase_model(Xs),
+      Xs = (InConf,SymPath,NegMarks),
+      erase_constraints(Xs, _, _),
       numbervars(Xs,1,_),
 %     asserta_fact(saved_sympath(Xs)) % TODO: a single term reach other db limits
-      Xs = (InConf,SymPath,NegMarks),
       assertz_fact(savedpath(inconf, InConf)),
-      asserta_saved_sympath_lst(sympath, SymPath),
-      asserta_saved_sympath_lst(negmarks, NegMarks)
+      assertz_saved_sympath_lst(sympath, SymPath),
+      assertz_saved_sympath_lst(negmarks, NegMarks)
     ).
 
 retract_saved_sympath_lst(Arg, Xs) :-
@@ -117,7 +205,7 @@ retract_saved_sympath_lst(Arg, Xs) :-
     retract_saved_sympath_lst(Arg, Xs0).
 retract_saved_sympath_lst(_Arg, []).
 
-asserta_saved_sympath_lst(Arg, Xs) :-
+assertz_saved_sympath_lst(Arg, Xs) :-
     ( member(X, Xs),
         assertz_fact(savedpath(Arg, X)),
         fail
@@ -128,7 +216,7 @@ asserta_saved_sympath_lst(Arg, Xs) :-
 % If a model is not found, negate the previous condition and try again.
 next_input(InConf, InGoal, NewNegMarks) :-
     retractall_fact(conc_stats(_,_,_)),
-    retract_saved_sympath((InConf,SymPath,NegMarks)),
+    retract_saved_sympath(InConf,SymPath,NegMarks),
     next_input_(InGoal,SymPath,NegMarks,NewNegMarks).
 
 next_input_(InGoal,SymPath,NegMarks,NewNegMarks) :-
@@ -145,11 +233,11 @@ next_input_(InGoal,SymPath,NegMarks,NewNegMarks) :-
     % Find a model that satisfy InGoal and NewSymPath.
     % The new model is implicitly assigned to the symbolic variables.
     length(NewSymPath, SymPathLen), % (for statistics)
-    Goal = ~append(InGoal,~pathgoal(NewSymPath)),
     %
     set_solver_opt(timeout, ~get_nextpath_timeout),
     statistics(walltime, [T0, _]),
-    get_model(Goal, Status),
+    add_constraints(~append(InGoal,~pathgoal(NewSymPath))),
+    try_solve(Status),
     statistics(walltime, [T1, _]), T is T1-T0,
     assertz_fact(conc_stats(SymPathLen,T,Status)),
     ( Status = sat ->
@@ -164,10 +252,6 @@ next_input_(InGoal,SymPath,NegMarks,NewNegMarks) :-
 only_negmarks([]) := [] :- !.
 only_negmarks([cond(_)|Xs]) := [cond| ~only_negmarks(Xs)] :- !.
 only_negmarks([_|Xs]) := [other| ~only_negmarks(Xs)].
-
-% Save the symbolic path (without any model assignment)
-save_sympath(InConf, SymPath, NegMarks) :-
-    asserta_saved_sympath((InConf,SymPath,NegMarks)).
 
 % Update cond/1 conditions in new sympath w.r.t. old sympath to
 % preserve "already negated" info (needed to avoid repeating paths)
@@ -188,7 +272,7 @@ neglastcond(SymPath) := NSymPath :-
     NSymPath = ~reverse(SymPath2).
 
 % cond/1 is removed so that we do not negate it again
-neglastcond_([cond(Constr)|SymPath]) := [~negcond(Constr)|SymPath] :- !.
+neglastcond_([cond(Constr)|SymPath]) := [~negbool(Constr)|SymPath] :- !.
 neglastcond_([_|SymPath]) := ~neglastcond_(SymPath) :- !.
 
 % Remove last condition (fail if no more conditions)
