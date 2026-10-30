@@ -1209,10 +1209,16 @@ smt_check_sat(Solver, Result) :-
 smt_get_model(Solver, RevDic, Model) :-
     smt_send(Solver, [sexp(['get-model'])]),
     smt_recv(Solver, Answer),
-    ( Answer = sexp([model|Model0]) ->
-        Model = ~dump_model(Model0, RevDic)
+    ( Answer = sexp([model|Model0]) -> % (Z3 before SMT-LIB 2.6)
+        true
+    ; Answer = sexp(Model0), model_defs(Model0) -> % (SMT-LIB 2.6)
+        true
     ; throw(error(unknown_answer(Answer), smt_get_model/2))
-    ).
+    ),
+    Model = ~dump_model(Model0, RevDic).
+
+model_defs([]).
+model_defs([sexp(['define-fun'|_])|Xs]) :- model_defs(Xs).
 
 % :- use_module(library(streams)).
 
